@@ -1,0 +1,3 @@
+[submodule "SG14"]
+	path = SG14
+	url = git@github.com:WG21-SG14/SG14.git
