@@ -1,5 +1,5 @@
 
 
 target_sources(SlotMap PRIVATE
-    LockedSlotMap.h
+    locked_slot_map.h
     main.cpp)

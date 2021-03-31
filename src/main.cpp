@@ -1,11 +1,11 @@
 
 
-#include "LockedSlotMap.h"
+#include "locked_slot_map.h"
 
 
 int main()
 {
-    LockedSlotMap map;
+    locked_slot_map<int> map;
 
     return 0;
 }
