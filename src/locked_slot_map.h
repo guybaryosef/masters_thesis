@@ -12,6 +12,9 @@
 #include <mutex>
 #include <shared_mutex>
 
+namespace gby
+{
+
 template<
     class T,
     class Key = std::pair<unsigned, unsigned>,
@@ -216,3 +219,5 @@ private:
     std::shared_mutex m;
     stdext::slot_map<T, Key, Container> slot_map;
 };
+
+} // namespace gby

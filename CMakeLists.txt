@@ -13,6 +13,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${BINARY_OUT_DIR})
 add_executable(SlotMap)
 target_link_libraries(SlotMap sg14)
 
+include_directories(
+    src
+    src/lock_free_impl   
+)
+
 add_subdirectory(src)
 add_subdirectory(SG14)
 
