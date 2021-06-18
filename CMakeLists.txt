@@ -1,13 +1,12 @@
 cmake_minimum_required(VERSION 3.13)
 set(CMAKE_CXX_STANDARD 20)
 
-project(Guy_SlotMap)
+project(GBY_SlotMap)
 
 find_package(Threads REQUIRED)
 
 set(BINARY_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/bin)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${BINARY_OUT_DIR})
-
 
 ########## start - Download gtest ##########
 include(FetchContent)
@@ -20,10 +19,11 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 ########## end - Download gtest ##########
 
+add_library(GBY_SlotMap "")
+set_target_properties(GBY_SlotMap PROPERTIES LINKER_LANGUAGE CXX)
 
-add_executable(SlotMap)
 
-target_link_libraries(SlotMap 
+target_link_libraries(GBY_SlotMap 
     sg14
 )
 

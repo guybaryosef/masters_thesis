@@ -6,6 +6,7 @@ target_link_libraries(LockedSlotMapUnitTest
     sg14
     gtest
     gtest_main
+    GBY_SlotMap
 )
 
 include(GoogleTest)

@@ -1,6 +1,7 @@
 
-target_sources(SlotMap PRIVATE
+target_sources(GBY_SlotMap PRIVATE
     locked_slot_map.h
-    main.cpp)
+    lock_free_const_sized_slot_map.h
+    lock_free_slot_map.h
+)
 
-add_subdirectory(lock_free_impl)
