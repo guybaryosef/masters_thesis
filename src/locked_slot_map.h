@@ -82,34 +82,33 @@ public:
 
     constexpr const_reference operator[](const key_type& key) const  
     {
-        std::shared_lock sl{m};
         return *find_unchecked(key); 
     }
 
     // find() methods
     constexpr iterator find(const key_type& key) 
     {
-        std::shared_lock sl{m};
-        return find(key);
+        std::shared_lock sl{m}; // TODO: enters mutex multiple times - have scoped_shared_mutex?555
+        return slot_map.find(key);
     }
 
     constexpr const_iterator find(const key_type& key) const
     {
         std::shared_lock sl{m};
-        return find(key);
+        return slot_map.find(key);
     }
 
     // find_unchecked() methods
     constexpr iterator find_unchecked(const key_type& key) 
     {
         std::shared_lock sl{m};
-        return find_unchecked(key);
+        return slot_map.find_unchecked(key);
     }
 
     constexpr const_iterator find_unchecked(const key_type& key) const 
     {
         std::shared_lock sl{m};
-        return find_unchecked(key);
+        return slot_map.find_unchecked(key);
     }
 
     // replace iterators with iterate_map function
@@ -215,8 +214,20 @@ public:
         slot_map.swap(rhs.slot_map);
     }
 
+    constexpr iterator begin()                         { return slot_map.begin(); }
+    constexpr iterator end()                           { return slot_map.end(); }
+    constexpr const_iterator begin() const             { return slot_map.begin(); }
+    constexpr const_iterator end() const               { return slot_map.end(); }
+    constexpr const_iterator cbegin() const            { return slot_map.begin(); }
+    constexpr const_iterator cend() const              { return slot_map.end(); }
+    constexpr reverse_iterator rbegin()                { return slot_map.rbegin(); }
+    constexpr reverse_iterator rend()                  { return slot_map.rend(); }
+    constexpr const_reverse_iterator rbegin() const    { return slot_map.rbegin(); }
+    constexpr const_reverse_iterator rend() const      { return slot_map.rend(); }
+    constexpr const_reverse_iterator crbegin() const   { return slot_map.rbegin(); }
+    constexpr const_reverse_iterator crend() const     { return slot_map.rend(); }
 private:
-    std::shared_mutex m;
+    mutable std::shared_mutex m;
     stdext::slot_map<T, Key, Container> slot_map;
 };
 
