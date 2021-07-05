@@ -1,2 +1,2 @@
 
-add_subdirectory(lockedSlotMap)
+add_subdirectory(SlotMapUnitTests)

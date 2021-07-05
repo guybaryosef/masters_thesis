@@ -1,8 +1,12 @@
 
+#pragma once
+
 #include <utility>
 #include <array>
 #include <deque>
+#include <chrono>
 #include <atomic>
+#include <mutex>
 #include <stdexcept>
 #include <tuple>
 #include <limits>
@@ -15,16 +19,16 @@ template<
     typename T,
     size_t Size,
     typename Key = std::pair<unsigned, unsigned>,
-    typename Container = std::array<T, Size> 
+    typename Container = std::array<T, Size>
 >
 class lock_free_const_sized_slot_map
 {
-public:   
     static constexpr auto get_index(const Key& k) { const auto& [idx, gen] = k; return idx; }
     static constexpr auto get_generation(const Key& k) { const auto& [idx, gen] = k; return gen; }
     template<class Integral> static constexpr void set_index(Key& k, Integral value) { auto& [idx, gen] = k; idx = static_cast<key_index_type>(value); }
     static constexpr void increment_generation(Key& k) { auto& [idx, gen] = k; ++gen; }
 
+public:
     using key_type   = Key;
     using slot_type  = key_type;
     using key_index_type       = decltype(lock_free_const_sized_slot_map::get_index(std::declval<Key>()));
@@ -56,16 +60,15 @@ public:
     constexpr const_reverse_iterator crbegin() const   { return _values.rbegin(); }
     constexpr const_reverse_iterator crend() const     { return _values.rend(); }
 
-    lock_free_const_sized_slot_map() : _erase_array_length {}
+    lock_free_const_sized_slot_map() : _erase_array_length {}, _size{}
     {
         _next_available_slot_index.store(0);
-
-        for (auto [slot, idx] = std::tuple{_slots.begin(), 1}; slot != _slots.end()-1;  ++slot, ++idx)
+        for (slot_index_type slot_idx {}; slot_idx < _slots.size(); ++slot_idx)
         {
-            *slot = std::make_pair(idx, key_generation_type{});
+            _slots[slot_idx] = std::make_pair(slot_idx+1, key_generation_type{});
         }
         
-        _last_available_slot_index.store(_slots.size()-1);
+        _sentinel_last_slot_index.store(_slots.size()-1);
     }
 
     constexpr key_type insert(const T& value)   { return this->emplace(value); }
@@ -84,26 +87,26 @@ public:
             - edit new slot object
             - increment slots size
         */
-        key_index_type cur_slot_idx {};
+        slot_index_type cur_slot_idx {};
         do
         {
-            cur_slot_idx = _next_available_slot_index.get(std::memory_order_relaxed);
-            if (cur_slot_idx == _last_available_slot_index.get(std::memory_order_relaxed))
+            cur_slot_idx = _next_available_slot_index.load(std::memory_order_relaxed);
+            if (cur_slot_idx == _sentinel_last_slot_index.load(std::memory_order_relaxed))
                 throw std::length_error("Slot Map is at max capacity.");
         }
-        while (_next_available_slot_index.compare_exchange_strong(cur_slot_idx, get_index(_slots[cur_slot_idx]))); 
+        while (!_next_available_slot_index.compare_exchange_strong(cur_slot_idx, get_index(_slots[cur_slot_idx]))); 
 
-        key_index_type cur_value_idx = _size.fetch_add(1); 
+        slot_index_type cur_value_idx = _size.fetch_add(1); 
         _values[cur_value_idx] = std::forward<Args...>(args...);
         
-        slot_type cur_slot = _slots[cur_slot_idx]; 
+        slot_type& cur_slot = _slots[cur_slot_idx]; 
         set_index(cur_slot, cur_value_idx);
         _reverse_array[cur_value_idx] = cur_slot_idx;
 
         return {cur_slot_idx, get_generation(cur_slot)};       
     }
 
-    constexpr size_type erase(const key_type& key) 
+    constexpr void erase(const key_type& key) 
     {
         /*
             add to erase queue
@@ -120,7 +123,7 @@ public:
 
     // while performing this method, length can't decrease- only increase
     template <class P>
-    constexpr bool iterate_map(P pred, std::chrono::milliseconds millisecs) 
+    constexpr bool iterate_map(P pred) 
     {
         // get iteration-remove lock
         // get length of values array (not the slots array).
@@ -128,25 +131,28 @@ public:
         // once done, check if size increased and continue iterating. repeat while size increases.
         // release iteration-remove lock
         // remove elements in erase queue
-        std::unique_lock ul (_iterationLock, millisecs);
+        std::unique_lock ul (_iterationLock, std::try_to_lock);
         if (!ul.owns_lock())
             return false;
 
-        for (size_t size{null_key_index}, i{}; size != this.size(); )
+        int i{};
+        size_t size{};
+        do
         {
-            size = this.size();
+            size = this->size();
 
             for ( ; i < size; ++i)
                 pred(_values[i]);
 
-        }
+        } 
+        while (size != this->size());
 
         drainEraseQueue();
 
         return true;
     }
 
-    constexpr size_t size()
+    constexpr size_t size() const
     {
         return _size.load(std::memory_order_relaxed);
     }
@@ -158,23 +164,19 @@ public:
 
     constexpr reference operator[](const key_type& key)              
     { 
-        const auto &[idx, gen] = key;
-        
-        if (const auto &slot = _slots[idx]; gen == get_generation(slot))
-            return _values[get_index(slot)];
-        else
-            return nullptr;
+        return *find_unchecked(key);
+
     }
 
     constexpr const_reference operator[](const key_type& key) const  
     { 
-        return (*this)[key];
+        return *find_unchecked(key);
     }
 
     constexpr iterator find(const key_type& key) 
     {
         if (auto slot = get_slot(key))
-            return std::next(_values.begin(), get_index(slot));
+            return std::next(_values.begin(), get_index(*slot));
         else
             return end();
     }
@@ -183,9 +185,26 @@ public:
     {
         return find(key);
     }
-private:
 
-    constexpr std::optional<slot_type&> get_slot(const key_type &key)
+    constexpr iterator find_unchecked(const key_type& key) 
+    {
+        const slot_type& slot {_slots[get_index(key)]};
+        return std::next(_values.begin(), get_index(slot));
+    }
+    
+    constexpr const_iterator find_unchecked(const key_type& key) const
+    {
+        const slot_type& slot {_slots[get_index(key)]};
+        return std::next(_values.begin(), get_index(slot));
+    }
+
+    constexpr bool empty() const
+    {
+        return size() == 0;
+    }
+
+private:
+    constexpr std::optional<std::reference_wrapper<slot_type>> get_slot(const key_type &key)
     {
         try
         {
@@ -229,7 +248,6 @@ private:
         }
     }
 
-
     // only one thread can be inside this function at a time
     void drainEraseQueue()
     {  
@@ -241,62 +259,61 @@ private:
                 - copy end of values to current value
                 - switch end-of-values slot to this index & decrement values size
                 - add current slot to free slots list
-
         */
-        size_t cur_erase_array_length {1};
-        key_type key_to_slot_to_erase {};
-        while (cur_erase_array_length > 0)
+        size_t cur_erase_array_length {};
+        
+        do
         {
-            do
+            cur_erase_array_length = _erase_array_length.load(std::memory_order_relaxed);
+            for (auto erase_idx = 0; erase_idx < cur_erase_array_length; ++erase_idx)
             {
-                cur_erase_array_length = _erase_array_length.load(std::memory_order_relaxed);
-                key_to_slot_to_erase = _erase_array[cur_erase_array_length-1];
-            } 
-            while (_erase_array_length.compare_exchange_strong(cur_erase_array_length, cur_erase_array_length-1));
-
-            std::optional<slot_type &> op_slot = get_slot(key_to_slot_to_erase);
-            if (op_slot.has_value())
-            {
-                slot_type &cur_slot = op_slot.value();
-
-                increment_generation(cur_slot);
-
-                // erase the element
-                size_t values_length {};
-                do
+                const key_type &key_to_slot_to_erase = _erase_array[erase_idx];
+                auto op_slot = get_slot(key_to_slot_to_erase);
+                if (op_slot)
                 {
-                    values_length = _size.load(std::memory_order_relaxed);
-                    _values[get_index(cur_slot)] = _values[values_length-1];
+                    slot_type &cur_slot = op_slot.value();
+                    increment_generation(cur_slot);
+
+                    // erase the element
+                    size_t values_length {};
+                    do
+                    {
+                        values_length = _size.load(std::memory_order_relaxed);
+                        _values[get_index(cur_slot)] = _values[values_length-1];
+                    }
+                    while (!_size.compare_exchange_strong(values_length, values_length-1));
+
+                    slot_type &slot_to_update = _slots[ _reverse_array[values_length-1] ];
+
+                    set_index(slot_to_update, get_index(cur_slot));
+
+                    // add erased slot back to free slot list
+                    key_index_type previous_sentinel {};
+                    do
+                    {
+                        previous_sentinel = _sentinel_last_slot_index.load(std::memory_order_relaxed);
+                        set_index(_slots[previous_sentinel], get_index(key_to_slot_to_erase));
+                    } 
+                    while (!_sentinel_last_slot_index.compare_exchange_strong(previous_sentinel, get_index(key_to_slot_to_erase)));
                 }
-                while (_size.compare_exchange_strong(values_length, values_length-1));
-
-                slot_type &slot_to_update = _slots[ _reverse_array[values_length-1] ];
-
-                set_index(slot_to_update, get_index(cur_slot));
-
-                // add slot back to free slot list
-                auto previously_last_free = _last_available_slot_index.exchange(get_index(key_to_slot_to_erase));
-                set_index(previously_last_free, get_index(key_to_slot_to_erase));
             }
-        } 
+        }
+        while (!_erase_array_length.compare_exchange_strong(cur_erase_array_length, 0));
     }
 
-    std::array<slot_type, Size> _slots;
+    std::array<slot_type, Size+1> _slots;
     std::array<size_t, Size> _reverse_array;
     container_type _values;
 
     std::atomic<key_index_type> _next_available_slot_index;
-    std::atomic<key_index_type> _last_available_slot_index;
+    std::atomic<key_index_type> _sentinel_last_slot_index;
     
-    // TODO: switch to simple array with atomicly set size.
     std::array<key_type, Size> _erase_array;
     std::atomic<size_t> _erase_array_length;
-    //
 
     std::atomic<size_t> _size;
 
     std::mutex _iterationLock;
-
 };
 
 

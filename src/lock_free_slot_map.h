@@ -2,7 +2,7 @@
  * locked_slot_map.h - A lock-free impelemntation of a slot_map.
  */
 
-# pragma once
+#pragma once
 
 
 #include <utility>
