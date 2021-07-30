@@ -1,2 +1,3 @@
 
 add_subdirectory(SlotMapUnitTests)
+add_subdirectory(SlotMapRegressionTests)

@@ -1,8 +1,8 @@
 
 add_executable(SlotMapUnitTests
     SlotMapUnitTests.cpp
-    LockedSlotMap.cpp
-    LockFreeConstSizedSlotMap.cpp
+    LockedMapUnit.cpp
+    LockFreeConstSizedMapUnit.cpp
 )
 
 target_link_libraries(SlotMapUnitTests
