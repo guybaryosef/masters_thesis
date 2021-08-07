@@ -60,8 +60,6 @@ std::pair<std::chrono::microseconds, size_t> writerFnc (T &keys, U &map, Z genFu
 template<typename T, typename U>
 std::tuple<std::chrono::microseconds, size_t, size_t> readerFnc(const T &keys, const U &map, bool &readFlag) 
 {
-    volatile typename U::value_type var{};
-
     size_t readCount {};
     size_t errorCount {};
 
@@ -72,7 +70,8 @@ std::tuple<std::chrono::microseconds, size_t, size_t> readerFnc(const T &keys, c
         {
             try
             {
-                var = *map.find(keys[rand()%keys.size()]);
+                *map.find(keys[rand()%keys.size()]);
+                __asm("");
                 readCount++;
             }
             catch(...) 
@@ -93,15 +92,19 @@ void test_SCMP(T& map, U genKeyFunctor, const bool enableErase)
     EXPECT_TRUE(map.empty());
 
     std::vector<typename T::key_type> keys{};
+    keys.reserve(WriteCount);
 
     auto writer_fut = std::async(std::launch::async,
-                                 (enableErase) ? writerEraserFnc<WriteCount, decltype(keys), T, U> : writerFnc<WriteCount, decltype(keys), T, U>, 
+                                 (enableErase) ? writerEraserFnc<WriteCount, decltype(keys), T, U> 
+                                               : writerFnc<WriteCount, decltype(keys), T, U>, 
                                  std::ref(keys), std::ref(map), genKeyFunctor);
 
     bool readFlag{true};
     std::vector<std::future<std::tuple<std::chrono::microseconds, size_t, size_t>>> readers{};
     for (size_t i {}; i < ReaderCount; ++i)
-        readers.push_back(std::async(std::launch::async, readerFnc<decltype(keys), T>, std::ref(keys), std::ref(map), std::ref(readFlag)));
+        readers.push_back(std::async(std::launch::async, 
+                                     readerFnc<decltype(keys), T>, 
+                                     std::ref(keys), std::ref(map), std::ref(readFlag)) );
 
     auto [writingTimeInMicros, erasedCount] = writer_fut.get();
 
@@ -123,14 +126,15 @@ void test_SCMP(T& map, U genKeyFunctor, const bool enableErase)
               << "     - total elements written: " << WriteCount                  << "\n"
               << "     - total elements erased: "  << erasedCount                 << "\n"
               << "     - time (in microseconds): " << writingTimeInMicros.count()
-              << ((erasedCount == 0) ? (" averaging " + std::to_string(writingTimeInMicros.count()/WriteCount) + " micros per read.\n")
+              << ((erasedCount == 0) ? (" averaging " + std::to_string(writingTimeInMicros.count()/WriteCount) + " micros per write.\n")
                                     : ("\n"))
               << "Readers:"                                                       << "\n"
               << "     - concurrent readers count: " << ReaderCount               << "\n"
               << "     - Total elements read: "      << totalReads                << "\n"
               << "     - time (in microseconds): "   << totalReaderTimeInMicros.count()
                                     << " averaging " << totalReaderTimeInMicros.count()/totalReads
-                                    << " micros per read."                        << "\n" << std::endl;
+                                    << " micros per read."                        << "\n" 
+            << std::endl;
 }
 
 

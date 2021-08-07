@@ -1,7 +1,7 @@
 
 
 #include "RegressionTestHelpers.h"
-#include "locked_slot_map.h"
+#include "lock_free_const_sized_slot_map.h"
 
 #include <gtest/gtest.h>
 
@@ -11,21 +11,21 @@
 constexpr size_t iterationCount {100000};
 constexpr size_t maxStrLen {50};
 
-char alphanum[] = "0123456789"
+char alphaNum2[] = "0123456789"
                   "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                   "abcdefghijklmnopqrstuvwxyz";
 
 
-TEST(LockedSlotMapRegression, IntElement)
+TEST(LockFreeConstSizedSlotMapRegression, IntElement)
 {
-    gby::locked_slot_map<int> map;
+    gby::lock_free_const_sized_slot_map<int, iterationCount> map;
     test_SCMP<iterationCount, 3>(map, []() { return rand();}, false);
 
-    gby::locked_slot_map<int> map2;
+    gby::lock_free_const_sized_slot_map<int, iterationCount> map2;
     test_SCMP<iterationCount, 3>(map2, []() { return rand();}, true);
 }
 
-TEST(LockedSlotMapRegression, StringElement)
+TEST(LockFreeConstSizedSlotMapRegression, StringElement)
 {
     constexpr size_t strCount {iterationCount};
     std::array<std::string, strCount> strInput {};
@@ -37,7 +37,7 @@ TEST(LockedSlotMapRegression, StringElement)
             std::string s{};
             s.reserve(len);
             for (int i = 0; i < len; ++i)
-                s += alphanum[rand() % sizeof(alphanum)];
+                s += alphaNum2[rand() % sizeof(alphaNum2)];
             return s;
         };
     
@@ -45,14 +45,14 @@ TEST(LockedSlotMapRegression, StringElement)
     std::generate_n(strInput.begin(), strCount, genStr);
     std::cout << "Finished generation." << std::endl;
 
-    gby::locked_slot_map<std::string> map;
+    gby::lock_free_const_sized_slot_map<std::string, iterationCount> map;
     test_SCMP<strCount, 3>(map, [&strInput]() { return strInput[rand()%strCount];}, false);
 
-    gby::locked_slot_map<std::string> map2;
+    gby::lock_free_const_sized_slot_map<std::string, iterationCount> map2;
     test_SCMP<strCount, 3>(map2, [&strInput]() { return strInput[rand()%strCount];}, true);
 }
 
-TEST(LockedSlotMapRegression, TestObjElement)
+TEST(LockFreeConstSizedSlotMapRegression, TestObjElement)
 {
     constexpr size_t testObjCount {iterationCount};
     std::array<TestObj, testObjCount> testObjInput {};
@@ -64,18 +64,18 @@ TEST(LockedSlotMapRegression, TestObjElement)
             std::string s{};
             s.reserve(len);
             for (int i = 0; i < len; ++i)
-                s += alphanum[rand() % sizeof(alphanum)];
+                s += alphaNum2[rand() % sizeof(alphaNum2)];
             
-            return TestObj{rand(), alphanum[rand() % sizeof(alphanum)], s};
+            return TestObj{rand(), alphaNum2[rand() % sizeof(alphaNum2)], s};
         };
     
     std::cout << "Starting generation." << std::endl;
     std::generate_n(testObjInput.begin(), testObjCount, genTestObj);
     std::cout << "Finished generation." << std::endl;
 
-    gby::locked_slot_map<TestObj, std::pair<int32_t, uint64_t>> map;
+    gby::lock_free_const_sized_slot_map<TestObj, iterationCount, std::pair<int32_t, uint64_t>> map;
     test_SCMP<testObjCount, 3>(map, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, false);
 
-    gby::locked_slot_map<TestObj, std::pair<int32_t, uint64_t>> map2;
+    gby::lock_free_const_sized_slot_map<TestObj, iterationCount, std::pair<int32_t, uint64_t>> map2;
     test_SCMP<testObjCount, 3>(map2, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, true);
 }

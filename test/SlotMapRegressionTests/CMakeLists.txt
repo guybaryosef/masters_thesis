@@ -2,6 +2,7 @@
 add_executable(SlotMapRegressionTests
     SlotMapRegressionTests.cpp
     LockedMapRegression.cpp
+    LockFreeConstSizedMapRegression.cpp
 )
 
 target_link_libraries(SlotMapRegressionTests

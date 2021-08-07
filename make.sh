@@ -19,6 +19,7 @@ cmake -DCMAKE_BUILD_TYPE=Debug ..
 cmake --build .
 
 # run unit tests
-./bin/SlotMapUnitTests
+# ./bin/SlotMapUnitTests
+#./bin/SlotMapRegressionTests
 
 popd
