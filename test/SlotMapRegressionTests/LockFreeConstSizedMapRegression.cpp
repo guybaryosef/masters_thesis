@@ -40,10 +40,7 @@ TEST(LockFreeConstSizedSlotMapRegression, StringElement)
                 s += alphaNum2[rand() % sizeof(alphaNum2)];
             return s;
         };
-    
-    std::cout << "Starting generation." << std::endl;
     std::generate_n(strInput.begin(), strCount, genStr);
-    std::cout << "Finished generation." << std::endl;
 
     gby::lock_free_const_sized_slot_map<std::string, iterationCount> map;
     test_SCMP<strCount, 3>(map, [&strInput]() { return strInput[rand()%strCount];}, false);
@@ -68,10 +65,7 @@ TEST(LockFreeConstSizedSlotMapRegression, TestObjElement)
             
             return TestObj{rand(), alphaNum2[rand() % sizeof(alphaNum2)], s};
         };
-    
-    std::cout << "Starting generation." << std::endl;
     std::generate_n(testObjInput.begin(), testObjCount, genTestObj);
-    std::cout << "Finished generation." << std::endl;
 
     gby::lock_free_const_sized_slot_map<TestObj, iterationCount, std::pair<int32_t, uint64_t>> map;
     test_SCMP<testObjCount, 3>(map, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, false);

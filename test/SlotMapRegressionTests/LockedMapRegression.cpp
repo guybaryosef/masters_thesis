@@ -15,7 +15,7 @@ char alphanum[] = "0123456789"
                   "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                   "abcdefghijklmnopqrstuvwxyz";
 
-
+    
 TEST(LockedSlotMapRegression, IntElement)
 {
     gby::locked_slot_map<int> map;
@@ -40,10 +40,7 @@ TEST(LockedSlotMapRegression, StringElement)
                 s += alphanum[rand() % sizeof(alphanum)];
             return s;
         };
-    
-    std::cout << "Starting generation." << std::endl;
     std::generate_n(strInput.begin(), strCount, genStr);
-    std::cout << "Finished generation." << std::endl;
 
     gby::locked_slot_map<std::string> map;
     test_SCMP<strCount, 3>(map, [&strInput]() { return strInput[rand()%strCount];}, false);
@@ -67,11 +64,8 @@ TEST(LockedSlotMapRegression, TestObjElement)
                 s += alphanum[rand() % sizeof(alphanum)];
             
             return TestObj{rand(), alphanum[rand() % sizeof(alphanum)], s};
-        };
-    
-    std::cout << "Starting generation." << std::endl;
+        };    
     std::generate_n(testObjInput.begin(), testObjCount, genTestObj);
-    std::cout << "Finished generation." << std::endl;
 
     gby::locked_slot_map<TestObj, std::pair<int32_t, uint64_t>> map;
     test_SCMP<testObjCount, 3>(map, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, false);

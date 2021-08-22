@@ -19,7 +19,7 @@ template<
     typename T,
     size_t Size,
     typename Key = std::pair<unsigned, unsigned>,
-    typename Container = std::array<T, Size>
+    typename Container = std::vector<T>
 >
 class lock_free_const_sized_slot_map
 {
@@ -48,17 +48,17 @@ public:
     static constexpr size_t null_key_index = std::numeric_limits<key_index_type>::max();
 
     constexpr iterator begin()                         { return _values.begin(); }
-    constexpr iterator end()                           { return std::next(_values.begin(), size());}
+    constexpr iterator end()                           { return _values.end();   }
     constexpr const_iterator begin() const             { return _values.begin(); }
-    constexpr const_iterator end() const               { return _values.end(); }
+    constexpr const_iterator end() const               { return _values.end();   }
     constexpr const_iterator cbegin() const            { return _values.begin(); }
-    constexpr const_iterator cend() const              { return _values.end(); }
-    constexpr reverse_iterator rbegin()                { return _values.rbegin(); }
-    constexpr reverse_iterator rend()                  { return _values.rend(); }
-    constexpr const_reverse_iterator rbegin() const    { return _values.rbegin(); }
-    constexpr const_reverse_iterator rend() const      { return _values.rend(); }
-    constexpr const_reverse_iterator crbegin() const   { return _values.rbegin(); }
-    constexpr const_reverse_iterator crend() const     { return _values.rend(); }
+    constexpr const_iterator cend() const              { return _values.end();   }
+    constexpr reverse_iterator rbegin()                { return _values.rbegin();}
+    constexpr reverse_iterator rend()                  { return _values.rend();  }
+    constexpr const_reverse_iterator rbegin() const    { return _values.rbegin();}
+    constexpr const_reverse_iterator rend() const      { return _values.rend();  }
+    constexpr const_reverse_iterator crbegin() const   { return _values.rbegin();}
+    constexpr const_reverse_iterator crend() const     { return _values.rend();  }
 
     lock_free_const_sized_slot_map() : _erase_array_length {}, _size{}
     {
@@ -183,7 +183,10 @@ public:
     
     constexpr const_iterator find(const key_type& key) const
     {
-        return find(key);
+        if (auto slot = get_slot(key))
+            return std::next(_values.begin(), get_index(*slot));
+        else
+            return end();
     }
 
     constexpr iterator find_unchecked(const key_type& key) 
@@ -204,6 +207,19 @@ public:
     }
 
 private:
+    constexpr std::optional<std::reference_wrapper<const slot_type>> get_slot(const key_type &key) const
+    {
+        try
+        {
+            const auto &[idx, gen] = key;
+
+            if (auto &slot = _slots[idx]; get_generation(slot) == gen)
+                return slot;
+        }
+        catch(const std::out_of_range &e) {}
+        return {};
+    }
+
     constexpr std::optional<std::reference_wrapper<slot_type>> get_slot(const key_type &key)
     {
         try
@@ -301,14 +317,14 @@ private:
         while (!_erase_array_length.compare_exchange_strong(cur_erase_array_length, 0));
     }
 
-    std::array<slot_type, Size+1> _slots;
-    std::array<size_t, Size> _reverse_array;
-    container_type _values;
+    std::vector<slot_type> _slots  = std::vector<slot_type>(Size+1);
+    container_type         _values = container_type(Size);
+    std::vector<size_t>    _reverse_array = std::vector<size_t>(Size);
 
     std::atomic<key_index_type> _next_available_slot_index;
     std::atomic<key_index_type> _sentinel_last_slot_index;
     
-    std::array<key_type, Size> _erase_array;
+    std::vector<key_type> _erase_array = std::vector<key_type>(Size);
     std::atomic<size_t> _erase_array_length;
 
     std::atomic<size_t> _size;

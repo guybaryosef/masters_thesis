@@ -31,7 +31,7 @@ std::pair<std::chrono::microseconds, size_t> writerEraserFnc(T &keys, U &map, Z 
     auto timeStart = std::chrono::high_resolution_clock::now();
     for(size_t count{}; count < writeCount; ++count)    
     {
-        keys.push_back(map.insert(genFunc()));
+        keys.emplace_back(map.insert(genFunc()));
 
         if (auto chanceToDelete = rand() % 10; chanceToDelete == 1)
         {
@@ -55,6 +55,24 @@ std::pair<std::chrono::microseconds, size_t> writerFnc (T &keys, U &map, Z genFu
     auto timeEnd = std::chrono::high_resolution_clock::now();
     
     return {std::chrono::duration_cast<std::chrono::microseconds>(timeEnd-timeStart), 0};
+}
+
+template <size_t writeCount, typename T, typename U, typename Z>
+std::pair<std::chrono::microseconds, size_t> eraserFnc (T &keys, U &map, bool &readFlag)
+{
+    long count {};
+
+    auto timeStart = std::chrono::high_resolution_clock::now();
+    while(readFlag)
+    {
+        sleep(0.01);
+        size_t key_idx {rand()%keys.size()};
+        map.erase(keys[key_idx]);
+    }
+    auto timeEnd = std::chrono::high_resolution_clock::now();
+    
+    std::chrono::microseconds timeSlept {10000*count};
+    return {std::chrono::duration_cast<std::chrono::microseconds>(timeEnd-timeStart) - timeSlept, 0};
 }
 
 template<typename T, typename U>
@@ -121,7 +139,7 @@ void test_SCMP(T& map, U genKeyFunctor, const bool enableErase)
         totalReads += readCount;
     }
 
-    std::cout << "Single Produce Multi Consumer statistics:"                      << "\n"
+    std::cout << "Single Producer Multi Consumer statistics:"                     << "\n"
               << "Writer:"                                                        << "\n"
               << "     - total elements written: " << WriteCount                  << "\n"
               << "     - total elements erased: "  << erasedCount                 << "\n"
@@ -138,10 +156,85 @@ void test_SCMP(T& map, U genKeyFunctor, const bool enableErase)
 }
 
 
-template <typename T, typename U>
-void test_MCMP(T& map)
+template <size_t WriterCount, size_t WriteCountPerWriter, size_t EraserCount, size_t ReaderCount, typename T, typename U>
+void test_MCMP(T& map, U genKeyFunctor)
 {
     EXPECT_TRUE(map.empty());
- 
 
+    std::vector<std::vector<typename T::key_type>> vecOfKeys{};
+
+    std::vector<std::future<std::tuple<std::chrono::microseconds, size_t>>> writers{};
+    for (size_t i {}; i < WriterCount; ++i)
+    {
+        vecOfKeys.emplace_back();
+        vecOfKeys.back().reserve(WriteCountPerWriter);
+        writers.push_back(std::async(std::launch::async, 
+                                    writerFnc<WriteCountPerWriter, decltype(vecOfKeys)::value_type, T, U>, 
+                                    std::ref(vecOfKeys.back()), std::ref(map), genKeyFunctor) );
+    }
+
+    bool readFlag{true};
+
+    std::vector<std::future<std::tuple<std::chrono::microseconds, size_t>>> erasers{};
+    for (size_t i {}; i < std::min(EraserCount, WriterCount); ++i)
+        erasers.push_back(std::async(std::launch::async, 
+                                     eraserFnc<decltype(vecOfKeys)::value_type, T, U>, 
+                                     std::ref(vecOfKeys[i]), std::ref(map), std::ref(readFlag)) );
+
+    std::vector<std::future<std::tuple<std::chrono::microseconds, size_t, size_t>>> readers{};
+    for (size_t i {}; i < ReaderCount; ++i)
+        readers.push_back(std::async(std::launch::async, 
+                                     readerFnc<decltype(vecOfKeys)::value_type, T>, 
+                                     std::ref(vecOfKeys[rand()%vecOfKeys.size()]), std::ref(map), std::ref(readFlag)) );
+
+    std::chrono::microseconds totalWriteInMicros {};
+    size_t totalWrites {WriterCount*WriteCountPerWriter};
+    for (auto& writer : writers)
+    {
+        auto& [writerInMicros, null] = writer.get();
+        totalWriteInMicros += writerInMicros;
+    }
+
+    readFlag = false;
+
+    std::chrono::microseconds totalReaderTimeInMicros {};
+    size_t totalReads {};
+    for (auto& reader : readers)
+    {
+        auto [readerTimeInMicros, readCount, errorCount] = reader.get();
+
+        EXPECT_EQ(0, errorCount);
+        totalReaderTimeInMicros += readerTimeInMicros;
+        totalReads += readCount;
+    }
+
+    std::chrono::microseconds totalEraserTimeInMicros {};
+    size_t totalErases {};
+    for (auto& eraser : erasers)
+    {
+        auto [eraserTimeInMicros, eraseCount] = eraser.get();
+        totalEraserTimeInMicros += eraserTimeInMicros;
+        totalErases += eraseCount;
+    }
+
+    std::cout << "Multi Producer Multi Consumer statistics:"                      << "\n"
+              << "Writers:"                                                       << "\n"
+              << "     - concurrent writers count: " << WriterCount               << "\n"
+              << "     - total elements written: "   << totalWrites               << "\n"
+              << "     - time (in microseconds): "   << totalWriteInMicros.count()
+                                                     << " averaging " + std::to_string(totalWriteInMicros.count()/totalWrites) 
+                                                     << " micros per write."      << "\n"
+              << "Erasers:"                                                       << "\n"
+              << "     - concurrent erasers count: " << WriterCount               << "\n"
+              << "     - total elements erased: "    << totalErases               << "\n"
+              << "     - time (in microseconds): "   << totalEraserTimeInMicros.count()
+                                                     << " averaging " + std::to_string(totalEraserTimeInMicros.count()/totalErases) 
+                                                     << " micros per write."      << "\n"
+              << "Readers:"                                                       << "\n"
+              << "     - concurrent readers count: " << ReaderCount               << "\n"
+              << "     - Total elements read: "      << totalReads                << "\n"
+              << "     - time (in microseconds): "   << totalReaderTimeInMicros.count()
+                                                     << " averaging " << totalReaderTimeInMicros.count()/totalReads
+                                                     << " micros per read."       << "\n" 
+              << std::endl;
 }

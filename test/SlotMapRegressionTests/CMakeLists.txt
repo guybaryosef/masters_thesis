@@ -1,11 +1,20 @@
 
-add_executable(SlotMapRegressionTests
+add_executable(LockedMapRegressions
     SlotMapRegressionTests.cpp
     LockedMapRegression.cpp
-    LockFreeConstSizedMapRegression.cpp
+)
+target_link_libraries(LockedMapRegressions
+    sg14
+    gtest
+    gtest_main
+    GBY_SlotMap
 )
 
-target_link_libraries(SlotMapRegressionTests
+add_executable(LockFreeConstSizedMapRegressions
+    SlotMapRegressionTests.cpp
+    LockFreeConstSizedMapRegression.cpp
+)
+target_link_libraries(LockFreeConstSizedMapRegressions
     sg14
     gtest
     gtest_main
@@ -13,4 +22,5 @@ target_link_libraries(SlotMapRegressionTests
 )
 
 include(GoogleTest)
-gtest_discover_tests(SlotMapRegressionTests)
+gtest_discover_tests(LockedMapRegressions)
+gtest_discover_tests(LockFreeConstSizedMapRegressions)
