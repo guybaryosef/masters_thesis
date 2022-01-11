@@ -4,6 +4,8 @@ TODO:
 - introduce concepts.
 - add MPMC regression testing.
 - lock free dynamic sized map.
+- have both debug and release build (the latter should remove asserts) 
+
 
 Some tradeoffs to consider for const-sized lock free impl:
 - how to handle erase queue. can you do it inplace? for now, we are having it as a seperate array.

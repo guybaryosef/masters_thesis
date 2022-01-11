@@ -1,7 +1,8 @@
 
 add_executable(SlotMapUnitTests
-    SlotMapUnitTests.cpp
+    ../main.cpp
     LockedMapUnit.cpp
+    LockFreeMapUnit.cpp
     LockFreeConstSizedMapUnit.cpp
 )
 

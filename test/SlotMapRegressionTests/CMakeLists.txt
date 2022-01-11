@@ -1,6 +1,6 @@
 
 add_executable(LockedMapRegressions
-    SlotMapRegressionTests.cpp
+    ../main.cpp
     LockedMapRegression.cpp
 )
 target_link_libraries(LockedMapRegressions
@@ -11,7 +11,7 @@ target_link_libraries(LockedMapRegressions
 )
 
 add_executable(LockFreeConstSizedMapRegressions
-    SlotMapRegressionTests.cpp
+    ../main.cpp
     LockFreeConstSizedMapRegression.cpp
 )
 target_link_libraries(LockFreeConstSizedMapRegressions

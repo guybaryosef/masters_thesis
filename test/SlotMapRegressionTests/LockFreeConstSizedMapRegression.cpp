@@ -8,15 +8,10 @@
 #include <string>
 #include <deque>
 
-constexpr size_t iterationCount {100000};
-constexpr size_t maxStrLen {50};
+constexpr size_t iterationCount {50000};
 
-char alphaNum2[] = "0123456789"
-                  "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                  "abcdefghijklmnopqrstuvwxyz";
-
-
-TEST(LockFreeConstSizedSlotMapRegression, IntElement)
+/////////// SCMP ///////////
+TEST(LockFreeConstSizedSlotMapRegression, SCMPIntElement)
 {
     gby::lock_free_const_sized_slot_map<int, iterationCount> map;
     test_SCMP<iterationCount, 3>(map, []() { return rand();}, false);
@@ -25,22 +20,10 @@ TEST(LockFreeConstSizedSlotMapRegression, IntElement)
     test_SCMP<iterationCount, 3>(map2, []() { return rand();}, true);
 }
 
-TEST(LockFreeConstSizedSlotMapRegression, StringElement)
+TEST(LockFreeConstSizedSlotMapRegression, SCMPStringElement)
 {
     constexpr size_t strCount {iterationCount};
-    std::array<std::string, strCount> strInput {};
-
-    auto genStr = []
-        {
-            auto len {rand()%maxStrLen};
-
-            std::string s{};
-            s.reserve(len);
-            for (int i = 0; i < len; ++i)
-                s += alphaNum2[rand() % sizeof(alphaNum2)];
-            return s;
-        };
-    std::generate_n(strInput.begin(), strCount, genStr);
+    auto strInput = genStrInput<strCount>();
 
     gby::lock_free_const_sized_slot_map<std::string, iterationCount> map;
     test_SCMP<strCount, 3>(map, [&strInput]() { return strInput[rand()%strCount];}, false);
@@ -49,27 +32,42 @@ TEST(LockFreeConstSizedSlotMapRegression, StringElement)
     test_SCMP<strCount, 3>(map2, [&strInput]() { return strInput[rand()%strCount];}, true);
 }
 
-TEST(LockFreeConstSizedSlotMapRegression, TestObjElement)
+TEST(LockFreeConstSizedSlotMapRegression, SCMPTestObjElement)
 {
     constexpr size_t testObjCount {iterationCount};
-    std::array<TestObj, testObjCount> testObjInput {};
-
-    auto genTestObj = []
-        {
-            auto len {rand()%maxStrLen};
-
-            std::string s{};
-            s.reserve(len);
-            for (int i = 0; i < len; ++i)
-                s += alphaNum2[rand() % sizeof(alphaNum2)];
-            
-            return TestObj{rand(), alphaNum2[rand() % sizeof(alphaNum2)], s};
-        };
-    std::generate_n(testObjInput.begin(), testObjCount, genTestObj);
+    auto testObjInput = genTestObj<testObjCount>();
 
     gby::lock_free_const_sized_slot_map<TestObj, iterationCount, std::pair<int32_t, uint64_t>> map;
     test_SCMP<testObjCount, 3>(map, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, false);
 
     gby::lock_free_const_sized_slot_map<TestObj, iterationCount, std::pair<int32_t, uint64_t>> map2;
     test_SCMP<testObjCount, 3>(map2, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, true);
+}
+
+/////////// MCMP ///////////
+constexpr size_t WriterCount {2};
+constexpr size_t MCMP_writesPerWriter {iterationCount/WriterCount};
+
+TEST(LockFreeConstSizedSlotMapRegression, MCMPIntElement)
+{
+    gby::lock_free_const_sized_slot_map<int, iterationCount> map;
+    test_MCMP<WriterCount, MCMP_writesPerWriter, 2, 3>(map, [] { return rand();});
+}
+
+TEST(LockFreeConstSizedSlotMapRegression, MCMPStringElement)
+{
+    constexpr size_t strCount {iterationCount};
+    auto strInput = genStrInput<strCount>();
+
+    gby::lock_free_const_sized_slot_map<std::string, iterationCount> map;
+    test_MCMP<WriterCount, MCMP_writesPerWriter, 1, 5>(map, [&strInput] { return strInput[rand()%strCount];});
+}
+
+TEST(LockFreeConstSizedSlotMapRegression, MCMPTestObjElement)
+{
+    constexpr size_t testObjCount {iterationCount};
+    auto testObjInput = genTestObj<testObjCount>();
+
+    gby::lock_free_const_sized_slot_map<TestObj, iterationCount, std::pair<int32_t, uint64_t>> map;
+    test_MCMP<WriterCount, MCMP_writesPerWriter, 0, 3>(map, [&testObjInput] { return testObjInput[rand()%testObjCount];});
 }

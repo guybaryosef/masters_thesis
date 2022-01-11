@@ -9,6 +9,12 @@
 #include <future>
 
 
+constexpr size_t maxStrLen {50};
+
+char alphaNum2[] = "0123456789"
+                  "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                  "abcdefghijklmnopqrstuvwxyz";
+
 struct TestObj
 {
     int         _a;
@@ -21,6 +27,45 @@ inline bool operator==(const TestObj &lhs, const TestObj &rhs)
     return lhs._a == rhs._a &&
            lhs._b == rhs._b &&
            lhs._c == rhs._c;
+}
+
+template<size_t T>
+auto genTestObj()
+{
+    std::array<TestObj, T> testObjInput {};
+
+    auto genTestObj = []
+        {
+            auto len {rand()%maxStrLen};
+
+            std::string s{};
+            s.reserve(len);
+            for (int i = 0; i < len; ++i)
+                s += alphaNum2[rand() % sizeof(alphaNum2)];
+            
+            return TestObj{rand(), alphaNum2[rand() % sizeof(alphaNum2)], s};
+        };
+    std::generate_n(testObjInput.begin(), T, genTestObj);
+    return testObjInput;
+}
+
+template <size_t T>
+auto genStrInput()
+{
+    std::array<std::string, T> strInput {};
+
+    auto genStr = []
+        {
+            auto len {rand()%maxStrLen};
+
+            std::string s{};
+            s.reserve(len);
+            for (int i = 0; i < len; ++i)
+                s += alphaNum2[rand() % sizeof(alphaNum2)];
+            return s;
+        };
+    std::generate_n(strInput.begin(), T, genStr);
+    return strInput;
 }
 
 // returns pair<TimeInFunction, numberOfElementsErased>
@@ -57,7 +102,7 @@ std::pair<std::chrono::microseconds, size_t> writerFnc (T &keys, U &map, Z genFu
     return {std::chrono::duration_cast<std::chrono::microseconds>(timeEnd-timeStart), 0};
 }
 
-template <size_t writeCount, typename T, typename U, typename Z>
+template <typename T, typename U, typename Z>
 std::pair<std::chrono::microseconds, size_t> eraserFnc (T &keys, U &map, bool &readFlag)
 {
     long count {};
@@ -163,37 +208,38 @@ void test_MCMP(T& map, U genKeyFunctor)
 
     std::vector<std::vector<typename T::key_type>> vecOfKeys{};
 
-    std::vector<std::future<std::tuple<std::chrono::microseconds, size_t>>> writers{};
+    std::vector<std::future<std::pair<std::chrono::microseconds, size_t>>> writers{};
     for (size_t i {}; i < WriterCount; ++i)
     {
         vecOfKeys.emplace_back();
         vecOfKeys.back().reserve(WriteCountPerWriter);
+
         writers.push_back(std::async(std::launch::async, 
-                                    writerFnc<WriteCountPerWriter, decltype(vecOfKeys)::value_type, T, U>, 
-                                    std::ref(vecOfKeys.back()), std::ref(map), genKeyFunctor) );
+                                writerFnc<WriteCountPerWriter, std::vector<typename T::key_type>, T, U>, 
+                                std::ref(vecOfKeys.back()), std::ref(map), genKeyFunctor));
     }
 
     bool readFlag{true};
 
-    std::vector<std::future<std::tuple<std::chrono::microseconds, size_t>>> erasers{};
+    std::vector<std::future<std::pair<std::chrono::microseconds, size_t>>> erasers{};
     for (size_t i {}; i < std::min(EraserCount, WriterCount); ++i)
-        erasers.push_back(std::async(std::launch::async, 
-                                     eraserFnc<decltype(vecOfKeys)::value_type, T, U>, 
-                                     std::ref(vecOfKeys[i]), std::ref(map), std::ref(readFlag)) );
+        erasers.emplace_back(std::async(std::launch::async, 
+                                        eraserFnc<std::vector<typename T::key_type>, T, U>, 
+                                        std::ref(vecOfKeys[i]), std::ref(map), std::ref(readFlag)) );
 
     std::vector<std::future<std::tuple<std::chrono::microseconds, size_t, size_t>>> readers{};
     for (size_t i {}; i < ReaderCount; ++i)
-        readers.push_back(std::async(std::launch::async, 
-                                     readerFnc<decltype(vecOfKeys)::value_type, T>, 
-                                     std::ref(vecOfKeys[rand()%vecOfKeys.size()]), std::ref(map), std::ref(readFlag)) );
+        readers.emplace_back(std::async(std::launch::async, 
+                                        readerFnc<std::vector<typename T::key_type>, T>, 
+                                        std::ref(vecOfKeys[rand()%vecOfKeys.size()]), std::ref(map), std::ref(readFlag)) );
 
     std::chrono::microseconds totalWriteInMicros {};
     size_t totalWrites {WriterCount*WriteCountPerWriter};
-    for (auto& writer : writers)
-    {
-        auto& [writerInMicros, null] = writer.get();
-        totalWriteInMicros += writerInMicros;
-    }
+    // for (auto& writer : writers)
+    // {
+    //     auto [writerInMicros, a] = writer.get();
+    //     totalWriteInMicros += writerInMicros;
+    // }
 
     readFlag = false;
 

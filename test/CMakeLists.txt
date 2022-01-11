@@ -1,3 +1,4 @@
 
 add_subdirectory(SlotMapUnitTests)
 add_subdirectory(SlotMapRegressionTests)
+add_subdirectory(LockFreeVectorUnitTests)

@@ -15,7 +15,7 @@ fi
 
 pushd build
 
-cmake -DCMAKE_BUILD_TYPE=Debug ..
+cmake -DCMAKE_CXX_COMPILER=g++-11 -DCMAKE_BUILD_TYPE=Debug ..
 cmake --build .
 
 # run unit tests

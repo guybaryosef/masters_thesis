@@ -23,10 +23,6 @@ add_library(GBY_SlotMap "")
 set_target_properties(GBY_SlotMap PROPERTIES LINKER_LANGUAGE CXX)
 
 
-target_link_libraries(GBY_SlotMap 
-    sg14
-)
-
 include_directories(
     src
     src/lock_free_impl   

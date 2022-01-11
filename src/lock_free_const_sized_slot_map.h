@@ -23,10 +23,12 @@ template<
 >
 class lock_free_const_sized_slot_map
 {
-    static constexpr auto get_index(const Key& k) { const auto& [idx, gen] = k; return idx; }
+    static constexpr auto get_index(const Key& k)      { const auto& [idx, gen] = k; return idx; }
     static constexpr auto get_generation(const Key& k) { const auto& [idx, gen] = k; return gen; }
-    template<class Integral> static constexpr void set_index(Key& k, Integral value) { auto& [idx, gen] = k; idx = static_cast<key_index_type>(value); }
     static constexpr void increment_generation(Key& k) { auto& [idx, gen] = k; ++gen; }
+    
+    template<class Integral> 
+    static constexpr void set_index(Key& k, Integral value) { auto& [idx, gen] = k; idx = static_cast<key_index_type>(value); }
 
 public:
     using key_type   = Key;
@@ -60,9 +62,12 @@ public:
     constexpr const_reverse_iterator crbegin() const   { return _values.rbegin();}
     constexpr const_reverse_iterator crend() const     { return _values.rend();  }
 
-    lock_free_const_sized_slot_map() : _erase_array_length {}, _size{}
+    lock_free_const_sized_slot_map() 
+            : _erase_array_length {}
+            , _size {}
     {
-        _next_available_slot_index.store(0);
+        _next_available_slot_index.store(0); // first element of slot container
+         
         for (slot_index_type slot_idx {}; slot_idx < _slots.size(); ++slot_idx)
         {
             _slots[slot_idx] = std::make_pair(slot_idx+1, key_generation_type{});
@@ -71,7 +76,7 @@ public:
         _sentinel_last_slot_index.store(_slots.size()-1);
     }
 
-    constexpr key_type insert(const T& value)   { return this->emplace(value); }
+    constexpr key_type insert(const T& value)   { return this->emplace(value);            }
     constexpr key_type insert(T&& value)        { return this->emplace(std::move(value)); }
 
     template<class... Args> 
@@ -91,6 +96,7 @@ public:
         do
         {
             cur_slot_idx = _next_available_slot_index.load(std::memory_order_relaxed);
+
             if (cur_slot_idx == _sentinel_last_slot_index.load(std::memory_order_relaxed))
                 throw std::length_error("Slot Map is at max capacity.");
         }
@@ -106,6 +112,10 @@ public:
         return {cur_slot_idx, get_generation(cur_slot)};       
     }
 
+    // this is non blocking. if another thread is currently iterating,
+    // add to erase queue and return. 
+    // TODO: perhaps we want to increment generation to disable the key from
+    // further indexing?
     constexpr void erase(const key_type& key) 
     {
         /*
@@ -121,6 +131,7 @@ public:
     }
 
 
+    // due to the iterationLock, 
     // while performing this method, length can't decrease- only increase
     template <class P>
     constexpr bool iterate_map(P pred) 
@@ -132,8 +143,7 @@ public:
         // release iteration-remove lock
         // remove elements in erase queue
         std::unique_lock ul (_iterationLock, std::try_to_lock);
-        if (!ul.owns_lock())
-            return false;
+        assert(ul.owns_lock());
 
         int i{};
         size_t size{};
@@ -157,7 +167,7 @@ public:
         return _size.load(std::memory_order_relaxed);
     }
 
-    constexpr size_t capacity()
+    constexpr size_t capacity() const
     {
         return _values.max_size();
     }
@@ -207,56 +217,41 @@ public:
     }
 
 private:
-    constexpr std::optional<std::reference_wrapper<const slot_type>> get_slot(const key_type &key) const
+    constexpr std::optional<std::reference_wrapper<const slot_type>> get_slot(const key_type &key) const noexcept
     {
         try
         {
             const auto &[idx, gen] = key;
 
-            if (auto &slot = _slots[idx]; get_generation(slot) == gen)
+            auto &slot = _slots[idx];
+            if (get_generation(slot) == gen)
                 return slot;
         }
-        catch(const std::out_of_range &e) {}
+        catch(const std::out_of_range &e) 
+        {}
+        
         return {};
     }
 
-    constexpr std::optional<std::reference_wrapper<slot_type>> get_slot(const key_type &key)
+    constexpr std::optional<std::reference_wrapper<slot_type>> get_slot(const key_type &key) noexcept
     {
         try
         {
             const auto &[idx, gen] = key;
 
-            if (auto &slot = _slots[idx]; get_generation(slot) == gen)
+            auto &slot = _slots[idx];
+            if (get_generation(slot) == gen)
                 return slot;
         }
-        catch(const std::out_of_range &e) {}
+        catch(const std::out_of_range &e) 
+        {}
+
         return {};
     }
 
+    // TODO: increment generation to make the object unreachable from here forward.
     void addToEraseQueue(const key_type &key)
     {
-        /*
-            if erase queue is empty
-                have begEraseQueue point to this value
-            else
-                have end of erase queue point to this value
-        */
-    //    std::optional<slot_type&> op_slot = get_slot(key);
-    //    if (op_slot.has_value())
-    //    {
-    //         auto &slot = op_slot.value();
-    //         key_index_type last_erase_value_idx {_last_on_erase_queue.exchange(get_index(slot))};
-    //         key_index_type last_erase_slot_idx = _reverse_array[last_erase_value_idx];
-    //         set_index(_slots[last_erase_slot_idx], slot)
-    //         if (last_erase_slot == null_key_index)
-    //         {
-    //             key_index_type beg_erase_queue {_next_on_erase_queue.load(std::memory_order_relaxed)};
-    //             if (beg_erase_queue == null_key_index)
-    //             {
-    //                 _next_on_erase_queue.compare_exchange_strong(0, get_index(slot));
-    //             }
-    //         }
-    //    }
         if (get_slot(key).has_value()) // validate key is valid
         {
             size_t index = _erase_array_length.fetch_add(1);
@@ -278,19 +273,22 @@ private:
         */
         size_t cur_erase_array_length {};
         
+        size_t erase_idx {};
         do
         {
             cur_erase_array_length = _erase_array_length.load(std::memory_order_relaxed);
-            for (auto erase_idx = 0; erase_idx < cur_erase_array_length; ++erase_idx)
+
+            for ( ; erase_idx < cur_erase_array_length; ++erase_idx)
             {
                 const key_type &key_to_slot_to_erase = _erase_array[erase_idx];
+
                 auto op_slot = get_slot(key_to_slot_to_erase);
                 if (op_slot)
                 {
                     slot_type &cur_slot = op_slot.value();
-                    increment_generation(cur_slot);
+                    increment_generation(cur_slot);    // makes the object unreachable from this point onwards from its key
 
-                    // erase the element
+                    // replace object with the current last object in values array (actually erasing it from slot map)
                     size_t values_length {};
                     do
                     {
@@ -303,7 +301,7 @@ private:
 
                     set_index(slot_to_update, get_index(cur_slot));
 
-                    // add erased slot back to free slot list
+                    // add 'erased' slot back to free slot list
                     key_index_type previous_sentinel {};
                     do
                     {
@@ -315,22 +313,31 @@ private:
             }
         }
         while (!_erase_array_length.compare_exchange_strong(cur_erase_array_length, 0));
+        
+        assert(cur_erase_array_length == erase_idx);
     }
 
-    std::vector<slot_type> _slots  = std::vector<slot_type>(Size+1);
-    container_type         _values = container_type(Size);
+
+    std::vector<slot_type> _slots         = std::vector<slot_type>(Size+1); // +1 for sentinel
+    container_type         _values        = container_type(Size);
     std::vector<size_t>    _reverse_array = std::vector<size_t>(Size);
 
+    // linked list used to keep track of the available slots in the slot array
     std::atomic<key_index_type> _next_available_slot_index;
     std::atomic<key_index_type> _sentinel_last_slot_index;
     
+    // stack used to store elements to be deleted. This is only used if trying
+    // to delete while iterating- otherwise the elemnt gets deleted on the spot)
     std::vector<key_type> _erase_array = std::vector<key_type>(Size);
-    std::atomic<size_t> _erase_array_length;
+    std::atomic<size_t>  _erase_array_length;
 
+    // number of elements in the values container. Unless caught in the middle 
+    // of an insertion/deletion, this will also be the size of used slots
+    // in the slots array.
     std::atomic<size_t> _size;
 
+    // enforces that we can't iterate & delete at the same time
     std::mutex _iterationLock;
 };
-
 
 } // namespace gby
