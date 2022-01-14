@@ -8,6 +8,13 @@ find_package(Threads REQUIRED)
 set(BINARY_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/bin)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${BINARY_OUT_DIR})
 
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
+set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+
 ########## start - Download gtest ##########
 include(FetchContent)
 FetchContent_Declare(
@@ -21,6 +28,7 @@ FetchContent_MakeAvailable(googletest)
 
 add_library(GBY_SlotMap "")
 set_target_properties(GBY_SlotMap PROPERTIES LINKER_LANGUAGE CXX)
+target_compile_options(GBY_SlotMap PRIVATE -Wall -Wextra -Wno-unknown-pragmas)
 
 
 include_directories(

@@ -25,13 +25,11 @@ template<typename T>
 concept TriviallyCopyable = std::is_trivially_copyable<T>::value; 
 
 // TODO: look over implementation
-template <  TriviallyCopyable T, 
-            size_t FIRST_BUCKET_SIZE = 8, 
+template <  typename T, 
+            size_t FIRST_BUCKET_SIZE = 2, 
             size_t BUCKET_COUNT      = 16 >
 class lock_free_vector
 {
-    T* L_VALUE_NULLPTR = nullptr;
-
     struct WriteDescriptor
     {
         const T      _val;
@@ -59,7 +57,7 @@ public:
     lock_free_vector() : _desc (std::make_shared<Descriptor>())
     {
         for (auto& i : _memoryArr)
-            i.store(L_VALUE_NULLPTR);
+            i.store(nullptr);
     }
 
     ~lock_free_vector()
@@ -83,7 +81,7 @@ public:
             complete_write();
 
             auto bucket = highest_bit(currDesc->_size + FIRST_BUCKET_SIZE) - highest_bit(FIRST_BUCKET_SIZE);
-            if (!_memoryArr[bucket])
+            if (_memoryArr[bucket].load() == nullptr)
                 allocate_bucket(bucket);
             
             auto writeDesc_ = new WriteDescriptor(val_, currDesc->_size);
@@ -132,7 +130,11 @@ public:
 
     size_t size() const
     {
-        return std::atomic_load(&_desc)->_size;
+        auto currDesc = std::atomic_load_explicit(&_desc, std::memory_order_relaxed);
+        int adjustment =   (!currDesc                    || 
+                            !currDesc->_writeDescriptor  || 
+                            currDesc->_writeDescriptor->_completed == true) ? 0 : 1;
+        return currDesc->_size - adjustment;
     }
 
 private:
@@ -141,8 +143,9 @@ private:
         uint64_t pos  = i_ + FIRST_BUCKET_SIZE;
         auto highBit  = highest_bit(pos);
         size_t bucket = highBit - highest_bit(FIRST_BUCKET_SIZE);
-        size_t idx    = pos ^ static_cast<uint64_t>(pow(2, highBit));
-        return _memoryArr[bucket].load()[idx];
+        T* arr = _memoryArr[bucket].load(); 
+        size_t idx = pos ^ static_cast<uint64_t>(pow(2, highBit));
+        return arr[idx];
     }
 
     void complete_write()
@@ -152,7 +155,8 @@ private:
 
         if (writeDesc && !writeDesc->_completed)
         {
-            at(writeDesc->_position) = writeDesc->_val;
+            T& ele = at(writeDesc->_position); 
+            ele = writeDesc->_val;
             writeDesc->_completed = true;
         }
     }
@@ -165,11 +169,13 @@ private:
 
     void allocate_bucket(const size_t bucket_)
     {
+        T* L_VALUE_NULLPTR = nullptr;
+
         if (bucket_ >= BUCKET_COUNT)
             throw std::length_error("Lock-free array reached max bucket size."); 
         
         size_t bucketSize = pow(FIRST_BUCKET_SIZE, bucket_+1);
-        T* newMemBlock = new T[bucketSize];
+        T* newMemBlock = new T[bucketSize]();
         if (!_memoryArr[bucket_].compare_exchange_strong(L_VALUE_NULLPTR, newMemBlock))
             delete []newMemBlock;
     }
