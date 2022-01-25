@@ -354,3 +354,53 @@ TEST(LockFreeVector, MultiThreadedInt)
     for (auto found : checkVals)
         ASSERT_TRUE(found);
 }
+
+TEST(LockFreeVector, iteratorOperators)
+{
+    gby::lock_free_vector<int, 2, 8> vec;
+    ASSERT_EQ(vec.begin(), vec.end());
+    ASSERT_EQ(vec.cbegin(), vec.cend());
+
+    std::vector<int> vals {5, 6, 7, 8, 9};
+    for (auto& i : vals)
+        vec.push_back(i);
+    
+    ASSERT_NE(vec.begin(), vec.end());
+    ASSERT_NE(vec.cbegin(), vec.cend());
+
+    gby::lock_free_vector<int>::iterator it = vec.begin();
+
+    ASSERT_EQ(vals[0], *it);
+    for (int i = 1; i < vals.size(); ++i)
+        ASSERT_EQ(vals[i], *(it+i));
+
+    ++it;
+    ASSERT_EQ(vals[1], *it);
+    
+    --it;
+    ASSERT_EQ(vals[0], *it);
+
+    // crossing a bucket boundary
+    ++it;
+    ++it;
+    ASSERT_EQ(vals[2], *it);
+
+    --it;
+    ASSERT_EQ(vals[1], *it);
+
+    --it;
+    gby::lock_free_vector<int>::iterator it2 = vec.begin();
+
+    ASSERT_EQ(it, it2);
+
+    ASSERT_EQ(it+vals.size(), vec.end());
+    
+    for (auto it = vec.begin(); it != vec.end(); ++it)
+    {
+        *it += 2;
+    }
+
+    auto it3 = vec.begin();
+    for (int i = 1; i < vals.size(); ++i)
+        ASSERT_EQ(vals[i] + 2, *(it3+i));
+    }

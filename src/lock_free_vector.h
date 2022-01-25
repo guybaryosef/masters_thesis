@@ -21,6 +21,9 @@
 namespace gby
 {
 
+template <typename T, typename Bucket>
+struct lock_free_vector_iterator;
+
 template<typename T>
 concept TriviallyCopyable = std::is_trivially_copyable<T>::value; 
 
@@ -30,22 +33,60 @@ template <  typename T,
             size_t BUCKET_COUNT      = 16 >
 class lock_free_vector
 {
+public:
+    using Bucket = std::pair<size_t, std::atomic<T*>>;
+
+    using value_type       = T;
+    using size_type        = size_t;
+    using reference        = value_type&;
+    using const_reference  = const value_type&;
+    using iterator         = lock_free_vector_iterator<value_type, Bucket>;
+    using const_iterator   = lock_free_vector_iterator<const value_type, Bucket>;
+    // using reverse_iterator = typename container_type::reverse_iterator;
+    // using const_reverse_iterator = typename container_type::const_reverse_iterator;
+
+    constexpr iterator begin()                         { return iterator(&(_bucketArr[0])); }
+    constexpr const_iterator begin() const             { return const_iterator((Bucket *) &(_bucketArr[0])); }
+    constexpr const_iterator cbegin() const            { return const_iterator((Bucket *) &(_bucketArr[0])); }
+    constexpr iterator end()                           
+    {
+        auto [bucket, idx] = getLocation(size()); 
+        return iterator(static_cast<Bucket *>(&(_bucketArr[bucket])), static_cast<std::ptrdiff_t>(idx)); 
+    }
+    constexpr const_iterator end() const               
+    { 
+        auto [bucket, idx] = getLocation(size()); 
+        return const_iterator(const_cast<Bucket *>(&(_bucketArr[bucket])), idx); 
+    }
+    constexpr const_iterator cend() const              
+    { 
+        auto [bucket, idx] = getLocation(size()); 
+        return const_iterator(const_cast<Bucket *>(&(_bucketArr[bucket])), idx); 
+    }
+    // constexpr reverse_iterator rbegin()                { return _values.rbegin();}
+    // constexpr reverse_iterator rend()                  { return _values.rend();  }
+    // constexpr const_reverse_iterator rbegin() const    { return _values.rbegin();}
+    // constexpr const_reverse_iterator rend() const      { return _values.rend();  }
+    // constexpr const_reverse_iterator crbegin() const   { return _values.rbegin();}
+    // constexpr const_reverse_iterator crend() const     { return _values.rend();  }
+
+private:
     struct WriteDescriptor
     {
-        const T      _val;
-        const size_t _position;
-        bool         _completed;
+        const value_type _val;
+        const size_type  _position;
+        bool             _completed;
 
-        WriteDescriptor(const T& val_, const size_t pos_) : _val(val_), _position(pos_), _completed{false} {}
+        WriteDescriptor(const value_type& val_, const size_type pos_) : _val(val_), _position(pos_), _completed{false} {}
     };
 
     struct Descriptor
     {
-        const size_t     _size;
+        const size_type  _size;
         WriteDescriptor* _writeDescriptor;
 
         Descriptor() : _size{}, _writeDescriptor{nullptr} {}
-        Descriptor(size_t size_, WriteDescriptor* writeDesc_) : _size(size_), _writeDescriptor(writeDesc_) {}
+        Descriptor(size_type size_, WriteDescriptor* writeDesc_) : _size(size_), _writeDescriptor(writeDesc_) {}
 
         ~Descriptor()
         {
@@ -54,25 +95,30 @@ class lock_free_vector
     };
 
 public:
-    lock_free_vector() : _desc (std::make_shared<Descriptor>())
+    lock_free_vector() noexcept 
+            : _desc (std::make_shared<Descriptor>())
+            , _usedBucketCount {0} 
     {
-        for (auto& i : _memoryArr)
-            i.store(nullptr);
+        for (auto& i : _bucketArr)
+        {
+            i.first = 0;
+            i.second.store(nullptr);
+        }
     }
 
-    ~lock_free_vector()
+    ~lock_free_vector() noexcept
     {
-        for(auto& i : _memoryArr)
-            if (i)
-                delete[] i;
+        for(auto& i : _bucketArr)
+            if (i.second)
+                delete[] i.second;
     }
 
-    T& operator[] (const size_t idx_)
+    T& operator[] (const size_type idx_)
     {
         return at(idx_);
     }
 
-    void push_back(const T& val_)
+    void push_back(const value_type& val_)
     {
         std::shared_ptr<Descriptor> currDesc, nextDesc {};
         do
@@ -81,7 +127,7 @@ public:
             complete_write();
 
             auto bucket = highest_bit(currDesc->_size + FIRST_BUCKET_SIZE) - highest_bit(FIRST_BUCKET_SIZE);
-            if (_memoryArr[bucket].load() == nullptr)
+            if (_bucketArr[bucket].second.load() == nullptr)
                 allocate_bucket(bucket);
             
             auto writeDesc_ = new WriteDescriptor(val_, currDesc->_size);
@@ -92,7 +138,7 @@ public:
         complete_write();
     }
 
-    bool update(const size_t idx_, const T& val_)
+    bool update(const size_type idx_, const value_type& val_)
     {
         if (likely(idx_ < size()))
         {
@@ -102,10 +148,10 @@ public:
         return false;
     }
 
-    T pop_back()
+    value_type pop_back()
     {
         std::shared_ptr<Descriptor> currDesc, nextDesc {};
-        T element {};
+        value_type element {};
         do
         {
             currDesc = std::atomic_load(&_desc);
@@ -118,7 +164,7 @@ public:
         return element;
     }
 
-    void reserve(const size_t size)
+    void reserve(const size_type size)
     {
         auto i = highest_bit(std::atomic_load(&_desc)->_size + FIRST_BUCKET_SIZE - 1) - highest_bit(FIRST_BUCKET_SIZE);
         if (i < 0)
@@ -128,60 +174,219 @@ public:
             allocate_bucket(++i);
     }
 
-    size_t size() const
+    size_type size() const
     {
         auto currDesc = std::atomic_load_explicit(&_desc, std::memory_order_relaxed);
-        int adjustment =   (!currDesc                    || 
-                            !currDesc->_writeDescriptor  || 
-                            currDesc->_writeDescriptor->_completed == true) ? 0 : 1;
+        int adjustment = (!currDesc->_writeDescriptor || currDesc->_writeDescriptor->_completed) ? 0 : 1;
         return currDesc->_size - adjustment;
     }
 
 private:
-    T& at(const size_t i_)
+    std::pair<size_t, size_type> getLocation (const size_type i_) const
     {
-        uint64_t pos  = i_ + FIRST_BUCKET_SIZE;
-        auto highBit  = highest_bit(pos);
-        size_t bucket = highBit - highest_bit(FIRST_BUCKET_SIZE);
-        T* arr = _memoryArr[bucket].load(); 
-        size_t idx = pos ^ static_cast<uint64_t>(pow(2, highBit));
+        const size_type pos     = i_ + FIRST_BUCKET_SIZE;
+        const auto      highBit = highest_bit(pos);
+        const size_t    bucket  = highBit - highest_bit(FIRST_BUCKET_SIZE);
+        const size_type idx     = pos ^ static_cast<uint64_t>(pow(2, highBit));
+        return {bucket, idx};
+    }
+
+    value_type& at(const size_type i_)
+    {
+        auto [bucket, idx] = getLocation(i_); 
+        T* arr = _bucketArr[bucket].second.load(); 
         return arr[idx];
     }
 
     void complete_write()
     {
-        auto currDesc  = std::atomic_load(&_desc);
+        const auto currDesc  = std::atomic_load(&_desc);
         auto writeDesc = currDesc->_writeDescriptor;
 
         if (writeDesc && !writeDesc->_completed)
         {
-            T& ele = at(writeDesc->_position); 
+            value_type& ele = at(writeDesc->_position); 
             ele = writeDesc->_val;
             writeDesc->_completed = true;
         }
     }
 
-    size_t highest_bit(const size_t val_) const
+    size_type highest_bit(const size_type val_) const noexcept
     {
         assert(val_ != 0);
         return 31-__builtin_clz(val_);
     }
 
-    void allocate_bucket(const size_t bucket_)
+    void allocate_bucket(const size_type bucket_)
     {
-        T* L_VALUE_NULLPTR = nullptr;
+        value_type* L_VALUE_NULLPTR = nullptr;
 
         if (bucket_ >= BUCKET_COUNT)
             throw std::length_error("Lock-free array reached max bucket size."); 
         
-        size_t bucketSize = pow(FIRST_BUCKET_SIZE, bucket_+1);
+        const size_t bucketSize = pow(FIRST_BUCKET_SIZE, bucket_+1);
         T* newMemBlock = new T[bucketSize]();
-        if (!_memoryArr[bucket_].compare_exchange_strong(L_VALUE_NULLPTR, newMemBlock))
+        if (!_bucketArr[bucket_].second.compare_exchange_strong(L_VALUE_NULLPTR, newMemBlock))
+        {
             delete []newMemBlock;
+        }
+        else
+        {
+            _bucketArr[bucket_].first = bucketSize;
+            _usedBucketCount = bucket_;
+        }
     }
 
     std::shared_ptr<Descriptor> _desc; // switch with std::atomic<shared_ptr> when P0718R2 gets into libstdc++
-    std::array<std::atomic<T*>, BUCKET_COUNT> _memoryArr;
+    std::array<Bucket, BUCKET_COUNT> _bucketArr;
+    uint8_t _usedBucketCount;
 };
+
+// Iterator is modeled after a std::deque iterator. Very helpful
+// stack overflow page: https://stackoverflow.com/questions/6292332/what-really-is-a-deque-in-stl 
+template <typename T, typename Bucket = lock_free_vector<T>::Bucket>
+struct lock_free_vector_iterator
+{
+    // iterator traits
+    using difference_type = std::ptrdiff_t;
+    using value_type = T;
+    using pointer = T*;
+    using reference = T&;
+    using iterator_category = std::random_access_iterator_tag;
+    
+    pointer _cur;
+    pointer _first;
+    pointer _last;
+
+private:
+    Bucket* _bucket;
+
+    void set_bucket(Bucket* bucket_)
+    {
+        _bucket = bucket_;
+        _first = &(bucket_->second[0]);
+        _last = _first + (bucket_->first - 1); 
+    }
+
+public:
+    lock_free_vector_iterator (Bucket* bucket_, difference_type offset_ = 0) noexcept
+    {
+        set_bucket(bucket_);
+        _cur = _first + offset_;
+    }
+
+    lock_free_vector_iterator& operator= (const lock_free_vector_iterator& iterator_)
+    {
+        _cur    = iterator_._cur;
+        _first  = iterator_._first;
+        _last   = iterator_._last;
+        _bucket = iterator_._bucket;
+    }
+
+    lock_free_vector_iterator& operator++ () 
+    {
+        if (_cur == _last)
+        {     
+            set_bucket(_bucket + 1);
+            _cur = _first;
+        }
+        else
+        {
+            ++_cur;
+        }
+        return *this;
+    }
+
+    lock_free_vector_iterator operator++ (int) 
+    {
+        lock_free_vector_iterator returnIt = *this; 
+        ++(*this); 
+        return returnIt;
+    }
+
+    lock_free_vector_iterator& operator-- ()
+    {
+        if(_cur == _first)
+        {
+            set_bucket(_bucket - 1);
+            _cur = _last;
+        }
+        else
+        {
+            --_cur;
+        }
+        return *this;
+    }
+
+    lock_free_vector_iterator operator-- (int)
+    {
+        lock_free_vector_iterator returnIt = *this;
+        --(*this);
+        return returnIt;
+    }
+
+    bool operator== (const lock_free_vector_iterator& other) const noexcept
+    {
+        return _cur == other._cur;
+    }
+
+    bool operator!= (const lock_free_vector_iterator& other) const noexcept
+    {
+        return !(*this == other);
+    }
+
+    reference operator* () const noexcept
+    {
+        return *_cur;
+    }
+
+    lock_free_vector_iterator& operator+= (difference_type n)
+    {
+        difference_type offset = n + (_cur - _first);
+        if (offset >= 0 && offset < _bucket->first) // if in same bucket
+        {
+            _cur += n;
+        }
+        else
+        {
+            Bucket* bucket = _bucket + 1;
+            difference_type offsettedByBuckets {_last - _cur + 1}; // +1 for the bump to enter the next bucket
+        
+            while (offset - offsettedByBuckets > bucket->first) 
+            {
+                offsettedByBuckets += bucket->first;
+                ++bucket;
+            }
+            
+            set_bucket(bucket);
+            _cur = _first + (offset - offsettedByBuckets);
+        }
+
+        return *this;
+    }
+    
+    lock_free_vector_iterator& operator-= (difference_type n)
+    {
+        return *this += -n;
+    }
+
+    lock_free_vector_iterator operator+ (difference_type n) const
+    {
+        lock_free_vector_iterator copy = *this;
+        return copy += n;
+    }
+
+    lock_free_vector_iterator operator- (difference_type n) const
+    {
+        lock_free_vector_iterator copy = *this;
+        return copy -= n;
+    }
+
+    lock_free_vector_iterator operator[] (difference_type n) const
+    {
+        return *(*this + n);
+    }
+};
+
 
 } // namespace gby

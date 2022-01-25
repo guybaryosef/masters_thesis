@@ -33,14 +33,14 @@ public:
     using slot_index_type      = key_index_type;
     using slot_generation_type = key_generation_type;
 
-    using container_type   = std::vector<T>;
+    using container_type   = lock_free_vector<T>;
     using size_type        = typename container_type::size_type;
     using reference        = typename container_type::reference;
     using const_reference  = typename container_type::const_reference;
     using iterator         = typename container_type::iterator;
     using const_iterator   = typename container_type::const_iterator;
-    using reverse_iterator = typename container_type::reverse_iterator;
-    using const_reverse_iterator = typename container_type::const_reverse_iterator;
+    // using reverse_iterator = typename container_type::reverse_iterator;
+    // using const_reverse_iterator = typename container_type::const_reverse_iterator;
 
     static constexpr size_t null_key_index = std::numeric_limits<key_index_type>::max();
 
@@ -50,12 +50,12 @@ public:
     constexpr const_iterator end() const               { return _values.end();   }
     constexpr const_iterator cbegin() const            { return _values.begin(); }
     constexpr const_iterator cend() const              { return _values.end();   }
-    constexpr reverse_iterator rbegin()                { return _values.rbegin();}
-    constexpr reverse_iterator rend()                  { return _values.rend();  }
-    constexpr const_reverse_iterator rbegin() const    { return _values.rbegin();}
-    constexpr const_reverse_iterator rend() const      { return _values.rend();  }
-    constexpr const_reverse_iterator crbegin() const   { return _values.rbegin();}
-    constexpr const_reverse_iterator crend() const     { return _values.rend();  }
+    // constexpr reverse_iterator rbegin()                { return _values.rbegin();}
+    // constexpr reverse_iterator rend()                  { return _values.rend();  }
+    // constexpr const_reverse_iterator rbegin() const    { return _values.rbegin();}
+    // constexpr const_reverse_iterator rend() const      { return _values.rend();  }
+    // constexpr const_reverse_iterator crbegin() const   { return _values.rbegin();}
+    // constexpr const_reverse_iterator crend() const     { return _values.rend();  }
 
     lock_free_slot_map() = default;
 
@@ -138,8 +138,8 @@ public:
     }
 
 private:
-    std::vector<Key> _slots;
-    std::vector<T>   _values;
+    gby::lock_free_vector<Key> _slots;
+    container_type             _values;
 
     std::atomic<uint64_t> _size;
     std::atomic<uint64_t> _capacity;
