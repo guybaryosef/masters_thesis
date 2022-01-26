@@ -39,8 +39,6 @@ public:
     using const_reference  = typename container_type::const_reference;
     using iterator         = typename container_type::iterator;
     using const_iterator   = typename container_type::const_iterator;
-    // using reverse_iterator = typename container_type::reverse_iterator;
-    // using const_reverse_iterator = typename container_type::const_reverse_iterator;
 
     static constexpr size_t null_key_index = std::numeric_limits<key_index_type>::max();
 
@@ -50,12 +48,6 @@ public:
     constexpr const_iterator end() const               { return _values.end();   }
     constexpr const_iterator cbegin() const            { return _values.begin(); }
     constexpr const_iterator cend() const              { return _values.end();   }
-    // constexpr reverse_iterator rbegin()                { return _values.rbegin();}
-    // constexpr reverse_iterator rend()                  { return _values.rend();  }
-    // constexpr const_reverse_iterator rbegin() const    { return _values.rbegin();}
-    // constexpr const_reverse_iterator rend() const      { return _values.rend();  }
-    // constexpr const_reverse_iterator crbegin() const   { return _values.rbegin();}
-    // constexpr const_reverse_iterator crend() const     { return _values.rend();  }
 
     lock_free_slot_map() = default;
 
@@ -63,15 +55,15 @@ public:
             : _capacity{initial_size}
             , _size {0}
     {
-        // _next_available_slot_index.store(0); // first element of slot container
-         
-        // for (slot_index_type slot_idx {}; slot_idx < _slots.size(); ++slot_idx)
-        // {
-        //     _slots[slot_idx] = std::make_pair(slot_idx+1, key_generation_type{});
-        // }
-        
-        // _sentinel_last_slot_index.store(_slots.size()-1);
+        _slots.reserve(_capacity);
 
+        _next_available_slot_index.store(0); // first element of slot container
+        for (int i = 0; i < _capacity; ++i)
+        {
+            _slots.push_back(std::make_pair(i+1, key_generation_type{}));
+        }
+        
+        _sentinel_last_slot_index.store(_slots.size()-1);
     }
     
     
@@ -139,6 +131,11 @@ public:
 
 private:
     gby::lock_free_vector<Key> _slots;
+
+    // linked list used to keep track of the available slots in the slot array
+    std::atomic<key_index_type> _next_available_slot_index;
+    std::atomic<key_index_type> _sentinel_last_slot_index;
+
     container_type             _values;
 
     std::atomic<uint64_t> _size;

@@ -403,4 +403,42 @@ TEST(LockFreeVector, iteratorOperators)
     auto it3 = vec.begin();
     for (int i = 1; i < vals.size(); ++i)
         ASSERT_EQ(vals[i] + 2, *(it3+i));
-    }
+}
+
+TEST(LockFreeVector, reserveTest)
+{
+    gby::lock_free_vector<int, 2, 8> vec;
+
+    vec.reserve(2);
+    ASSERT_EQ(1, vec.bucket_count());
+
+    vec.reserve(4);
+    ASSERT_EQ(2, vec.bucket_count());
+
+    vec.reserve(6);
+    ASSERT_EQ(2, vec.bucket_count());
+
+    vec.reserve(7);
+    ASSERT_EQ(3, vec.bucket_count());
+
+    vec.reserve(12);
+    ASSERT_EQ(3, vec.bucket_count());
+
+    vec.reserve(14);
+    ASSERT_EQ(3, vec.bucket_count());
+
+    vec.reserve(9);
+    ASSERT_EQ(3, vec.bucket_count());
+
+    vec.reserve(4);
+    ASSERT_EQ(3, vec.bucket_count());
+
+    vec.reserve(60);
+    ASSERT_EQ(5, vec.bucket_count());
+
+    vec.reserve(63);
+    ASSERT_EQ(6, vec.bucket_count());
+
+    vec.reserve(6);
+    ASSERT_EQ(6, vec.bucket_count());
+}

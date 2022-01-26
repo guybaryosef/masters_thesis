@@ -63,12 +63,6 @@ public:
         auto [bucket, idx] = getLocation(size()); 
         return const_iterator(const_cast<Bucket *>(&(_bucketArr[bucket])), idx); 
     }
-    // constexpr reverse_iterator rbegin()                { return _values.rbegin();}
-    // constexpr reverse_iterator rend()                  { return _values.rend();  }
-    // constexpr const_reverse_iterator rbegin() const    { return _values.rbegin();}
-    // constexpr const_reverse_iterator rend() const      { return _values.rend();  }
-    // constexpr const_reverse_iterator crbegin() const   { return _values.rbegin();}
-    // constexpr const_reverse_iterator crend() const     { return _values.rend();  }
 
 private:
     struct WriteDescriptor
@@ -104,6 +98,8 @@ public:
             i.first = 0;
             i.second.store(nullptr);
         }
+
+        reserve(FIRST_BUCKET_SIZE);
     }
 
     ~lock_free_vector() noexcept
@@ -166,12 +162,9 @@ public:
 
     void reserve(const size_type size)
     {
-        auto i = highest_bit(std::atomic_load(&_desc)->_size + FIRST_BUCKET_SIZE - 1) - highest_bit(FIRST_BUCKET_SIZE);
-        if (i < 0)
-            i = 0;
-
-        while (i < (highest_bit(size + FIRST_BUCKET_SIZE - 1) - highest_bit(FIRST_BUCKET_SIZE)) )
-            allocate_bucket(++i);
+        const auto newBucketSize = highest_bit(size + FIRST_BUCKET_SIZE - 1) - highest_bit(FIRST_BUCKET_SIZE);
+        while (_usedBucketCount < static_cast<int>(newBucketSize))
+            allocate_bucket(_usedBucketCount+1);
     }
 
     size_type size() const
@@ -179,6 +172,11 @@ public:
         auto currDesc = std::atomic_load_explicit(&_desc, std::memory_order_relaxed);
         int adjustment = (!currDesc->_writeDescriptor || currDesc->_writeDescriptor->_completed) ? 0 : 1;
         return currDesc->_size - adjustment;
+    }
+
+    size_t bucket_count() const
+    {
+        return _usedBucketCount + 1; // +1 because we are starting at 0
     }
 
 private:
@@ -239,7 +237,7 @@ private:
 
     std::shared_ptr<Descriptor> _desc; // switch with std::atomic<shared_ptr> when P0718R2 gets into libstdc++
     std::array<Bucket, BUCKET_COUNT> _bucketArr;
-    uint8_t _usedBucketCount;
+    size_t _usedBucketCount;
 };
 
 // Iterator is modeled after a std::deque iterator. Very helpful
