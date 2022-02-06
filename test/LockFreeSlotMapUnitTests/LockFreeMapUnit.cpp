@@ -1,32 +1,32 @@
 
-#include "UnitTestHelpers.h"
+#include "../UnitTestHelpers.h"
 
-#include "lock_free_const_sized_slot_map.h"
+#include "lock_free_slot_map.h"
 
 #include <gtest/gtest.h>
 #include <string>
 #include <deque>
 
 
-TEST(LockFreeConstSizedUnit, IntElement)
+TEST(LockFreeUnit, IntElement)
 {
-    gby::lock_free_const_sized_slot_map<int, 10> intMap;
+    gby::lock_free_slot_map<int> intMap;
     std::array<int, 3> vals {48, 0, -9823};
 
     addQueryAndRemoveElement(intMap, vals);
 }
 
-TEST(LockFreeConstSizedUnit, StringElement)
+TEST(LockFreeUnit, StringElement)
 {
-    gby::lock_free_const_sized_slot_map<std::string, 3> stringMap;
+    gby::lock_free_slot_map<std::string> stringMap;
     std::array<std::string, 3> vals {"this is a string", {}, "ABC."};
 
     addQueryAndRemoveElement(stringMap, vals);
 }
 
-TEST(LockFreeConstSizedUnit, TestObjElement)
+TEST(LockFreeUnit, TestObjElement)
 {
-    gby::lock_free_const_sized_slot_map<TestObj, 15234, std::pair<int32_t, uint64_t>> testObjMap;
+    gby::lock_free_slot_map<TestObj, std::pair<int32_t, uint64_t>> testObjMap;
     std::array<TestObj, 3> vals { TestObj{156, 'b', "this is a string"}, 
                                   TestObj{}, 
                                   TestObj{-124, 'Q', "anotherSTRING"} }; 
@@ -34,9 +34,9 @@ TEST(LockFreeConstSizedUnit, TestObjElement)
     addQueryAndRemoveElement(testObjMap, vals);
 }
 
-TEST(LockFreeConstSizedUnit, IterateOverTestObj)
+TEST(LockFreeUnit, IterateOverTestObj)
 {
-    gby::lock_free_const_sized_slot_map<TestObj, 4, std::pair<int32_t, uint64_t>> testObjMap;
+    gby::lock_free_slot_map<TestObj, std::pair<int32_t, uint64_t>> testObjMap;
 
     std::vector<decltype(testObjMap)::key_type> keys{};
     std::vector<TestObj> values {

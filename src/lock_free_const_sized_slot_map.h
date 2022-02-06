@@ -125,7 +125,7 @@ public:
         */
         addToEraseQueue(key);
 
-        std::unique_lock<std::mutex> ul (_iterationLock, std::try_to_lock);
+        std::unique_lock ul (_iterationLock, std::try_to_lock);
         if (ul.owns_lock())
             drainEraseQueue();
     }
@@ -142,7 +142,7 @@ public:
         // once done, check if size increased and continue iterating. repeat while size increases.
         // release iteration-remove lock
         // remove elements in erase queue
-        std::unique_lock ul (_iterationLock, std::try_to_lock);
+        std::unique_lock ul (_iterationLock);
         assert(ul.owns_lock());
 
         int i{};
@@ -169,7 +169,7 @@ public:
 
     constexpr size_t capacity() const
     {
-        return _values.max_size();
+        return _values.capacity();
     }
 
     constexpr reference operator[](const key_type& key)              
@@ -201,13 +201,13 @@ public:
 
     constexpr iterator find_unchecked(const key_type& key) 
     {
-        const slot_type& slot {_slots[get_index(key)]};
+        const auto& slot = _slots[get_index(key)];
         return std::next(_values.begin(), get_index(slot));
     }
     
     constexpr const_iterator find_unchecked(const key_type& key) const
     {
-        const slot_type& slot {_slots[get_index(key)]};
+        const auto& slot {_slots[get_index(key)]};
         return std::next(_values.begin(), get_index(slot));
     }
 
@@ -249,11 +249,12 @@ private:
         return {};
     }
 
-    // TODO: increment generation to make the object unreachable from here forward.
     void addToEraseQueue(const key_type &key)
     {
-        if (get_slot(key).has_value()) // validate key is valid
+        auto slot = get_slot(key);
+        if (slot.has_value())
         {
+            increment_generation(*slot);
             size_t index = _erase_array_length.fetch_add(1);
             _erase_array[index] = key;
         }
@@ -302,13 +303,11 @@ private:
                     set_index(slot_to_update, get_index(cur_slot));
 
                     // add 'erased' slot back to free slot list
-                    key_index_type previous_sentinel {};
-                    do
-                    {
-                        previous_sentinel = _sentinel_last_slot_index.load(std::memory_order_relaxed);
-                        set_index(_slots[previous_sentinel], get_index(key_to_slot_to_erase));
-                    } 
-                    while (!_sentinel_last_slot_index.compare_exchange_strong(previous_sentinel, get_index(key_to_slot_to_erase)));
+                    // NOTE: this is the only place that _sentinel_last_slot_index can change, 
+                    // and so we don't need to worry about any data races. 
+                    key_index_type previous_sentinel = _sentinel_last_slot_index.load(std::memory_order_relaxed);
+                    set_index(_slots[previous_sentinel], get_index(key_to_slot_to_erase));
+                    _sentinel_last_slot_index.store(get_index(key_to_slot_to_erase));
                 }
             }
         }
