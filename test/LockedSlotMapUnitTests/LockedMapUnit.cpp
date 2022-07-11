@@ -13,7 +13,7 @@ TEST(LockedSlotMapUnit, IntElement)
     gby::locked_slot_map<int> intMap;
     std::array<int, 3> vals {48, 0, -9823};
 
-    addQueryAndRemoveElement(intMap, vals);
+    addQueryAndRemoveElement_Locked(intMap, vals);
 }
 
 TEST(LockedSlotMapUnit, StringElement)
@@ -21,7 +21,7 @@ TEST(LockedSlotMapUnit, StringElement)
     gby::locked_slot_map<std::string> stringMap;
     std::array<std::string, 3> vals {"this is a string", {}, "ABC."};
 
-    addQueryAndRemoveElement(stringMap, vals);
+    addQueryAndRemoveElement_Locked(stringMap, vals);
 }
 
 TEST(LockedSlotMapUnit, TestObjElement)
@@ -31,5 +31,5 @@ TEST(LockedSlotMapUnit, TestObjElement)
                                   TestObj{}, 
                                   TestObj{-124, 'Q', "anotherSTRING"} }; 
 
-    addQueryAndRemoveElement(testObjMap, vals);
+    addQueryAndRemoveElement_Locked(testObjMap, vals);
 }

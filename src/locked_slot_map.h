@@ -113,7 +113,8 @@ public:
 
     // replace iterators with iterate_map function
     template <class P>
-    constexpr void iterate_map(P pred) {
+    constexpr void iterate_map(P pred) 
+    {
         std::shared_lock sl{m};
         std::for_each(slot_map.begin(), slot_map.end(), pred);
     }

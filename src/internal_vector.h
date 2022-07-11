@@ -219,7 +219,7 @@ private:
 
 // Iterator is modeled after a std::deque iterator. Very helpful
 // stack overflow page: https://stackoverflow.com/questions/6292332/what-really-is-a-deque-in-stl 
-template <typename T, typename Bucket = internal_vector<T>::Bucket>
+template <typename T, typename Bucket = typename internal_vector<T>::Bucket>
 struct internal_vector_iterator
 {
     // iterator traits

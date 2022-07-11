@@ -58,7 +58,7 @@ TEST(LockFreeConstSizedUnit, IterateOverTestObj)
         auto [k,v] = std::tie(keys[i], values[i]);
         v._a -= 15;
         v._c += "_Appended.";
-        EXPECT_EQ(v, *testObjMap.find(k));
+        EXPECT_EQ(v, (*testObjMap.find(k)).get());
     }
 
 }

@@ -36,6 +36,7 @@ public:
     using slot_generation_type = key_generation_type;
 
     using container_type   = internal_vector<T>;
+    using value_type       = T;
     using size_type        = typename container_type::size_type;
     using reference        = typename container_type::reference;
     using const_reference  = typename container_type::const_reference;
@@ -44,20 +45,15 @@ public:
 
     static constexpr size_t null_key_index = std::numeric_limits<key_index_type>::max();
 
-    constexpr iterator begin()                         { return _values.begin(); }
-    constexpr iterator end()                           { return _values.end();   }
-    constexpr const_iterator begin() const             { return _values.begin(); }
-    constexpr const_iterator end() const               { return _values.end();   }
-    constexpr const_iterator cbegin() const            { return _values.begin(); }
-    constexpr const_iterator cend() const              { return _values.end();   }
-
     lock_free_slot_map() = default;
 
     lock_free_slot_map(size_t initial_size, float reserve_factor = 2)
             : _capacity{initial_size}
             , _size {0}
-            , _reserve_factor {reserve_factor}
     {
+        if (reserve_factor > 1)
+            _reserve_factor = reserve_factor;
+        
         _slots.reserve(_capacity + 1); // +1 for sentinel node
 
         _next_available_slot_index.store(0); // first element of slot container
@@ -91,7 +87,7 @@ public:
         while (!_next_available_slot_index.compare_exchange_strong(cur_slot_idx, get_index(_slots[cur_slot_idx]))); 
 
         slot_index_type cur_value_idx = _size.fetch_add(1); 
-        _values[cur_value_idx] = std::forward<Args...>(args...);
+        _data[cur_value_idx] = std::forward<Args...>(args...);
         
         slot_type& cur_slot = _slots[cur_slot_idx]; 
         set_index(cur_slot, cur_value_idx);
@@ -111,7 +107,7 @@ public:
             return;
 
 
-        _values.reserve(requested_capacity);
+        _data.reserve(requested_capacity);
         _reverse_array.reserve(requested_capacity);
 
         _slots.reserve(requested_capacity + 1); // +1 for the sentinel node
@@ -158,7 +154,7 @@ public:
             size = this->size();
 
             for ( ; i < size; ++i)
-                pred(_values[i]);
+                pred(_data[i]);
 
         } 
         while (size != this->size());
@@ -168,7 +164,8 @@ public:
 
     constexpr void set_reserve_factor(const float val_)
     {
-        _reserve_factor = val_;
+        if (val_ > 1)
+            _reserve_factor = val_;
     }
 
     constexpr size_t size() const
@@ -183,41 +180,58 @@ public:
 
     constexpr reference operator[](const key_type& key)              
     { 
-        return *find_unchecked(key);
-
+        return find_unchecked(key);
     }
 
     constexpr const_reference operator[](const key_type& key) const  
     { 
-        return *find_unchecked(key);
+        return find_unchecked(key);
     }
 
-    constexpr iterator find(const key_type& key) 
+    constexpr std::optional<std::reference_wrapper<value_type>> at(const key_type& key)
     {
-        if (auto slot = get_slot(key))
-            return std::next(_values.begin(), get_index(*slot));
-        else
-            return end();
-    }
-    
-    constexpr const_iterator find(const key_type& key) const
-    {
-        if (auto slot = get_slot(key))
-            return std::next(_values.begin(), get_index(*slot));
-        else
-            return end();
+        if (const auto&[idx,gen] = key; idx >= size())
+            throw std::out_of_range("Index " + std::to_string(idx) + 
+                    " is larger than Slot Map size of " + std::to_string(size()));
+        
+        return find(key);
     }
 
-    constexpr iterator find_unchecked(const key_type& key) 
+    constexpr std::optional<std::reference_wrapper<const value_type>> at(const key_type& key) const
     {
-        const auto& slot = _slots[get_index(key)];
-        return std::next(_values.begin(), get_index(slot));
+        if (const auto&[idx, gen] = key; idx >= size())
+            throw std::out_of_range("Index " + std::to_string(idx) + 
+                    " is larger than Slot Map size of " + std::to_string(size()));
+        
+        return find(key);
+    }
+
+    constexpr std::optional<std::reference_wrapper<value_type>> find(const key_type& key) 
+    {
+        if (auto slot = get_slot(key))
+            return _data[get_index(*slot)];
+        else
+            return {};
     }
     
-    constexpr const_iterator find_unchecked(const key_type& key) const
+    constexpr std::optional<std::reference_wrapper<const value_type>> find(const key_type& key) const
     {
-        const auto& slot = _slots[get_index(key)];
-        return std::next(_values.begin(), get_index(slot));
+        if (auto slot = get_slot(key))
+            return _data[get_index(*slot)];
+        else
+            return {};
+    }
+
+    constexpr reference find_unchecked(const key_type& key) 
+    {
+        const auto& slot {_slots[get_index(key)]};
+        return _data[get_index(slot)];
+    }
+    
+    constexpr const_reference find_unchecked(const key_type& key) const
+    {
+        const auto& slot {_slots[get_index(key)]};
+        return _data[get_index(slot)];
     }
 
     constexpr bool empty() const
@@ -309,7 +323,7 @@ private:
                     do
                     {
                         values_length = _size.load(std::memory_order_relaxed);
-                        _values[get_index(cur_slot)] = _values[values_length-1];
+                        _data[get_index(cur_slot)] = _data[values_length-1];
                     }
                     while (!_size.compare_exchange_strong(values_length, values_length-1));
 
@@ -334,7 +348,7 @@ private:
     std::atomic<key_index_type> _next_available_slot_index;
     std::atomic<key_index_type> _sentinel_last_slot_index;
 
-    container_type        _values;
+    container_type        _data;
     std::atomic<uint64_t> _size;
     std::atomic<uint64_t> _capacity;
 
