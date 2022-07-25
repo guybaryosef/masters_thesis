@@ -21,6 +21,7 @@
 namespace gby
 {
 
+
 template <typename T, typename Bucket>
 struct internal_vector_iterator;
 
@@ -106,7 +107,28 @@ public:
         if (_bucketArr[bucket].first == 0)
             allocate_bucket(bucket);
         
-        _bucketArr[bucket].second.load()[b_idx] = val_; 
+        if constexpr (is_atomic<value_type>)
+        {
+            _bucketArr[bucket].second.load()[b_idx].store(val_.load(std::memory_order_relaxed), 
+                                                        std::memory_order_relaxed); 
+        }        
+        else if constexpr (is_pair_atomic<value_type>)
+        {
+            if constexpr(is_pair_first_atomic<value_type>)
+                _bucketArr[bucket].second.load()[b_idx].first.store(val_.first.load(std::memory_order_relaxed), 
+                                                                     std::memory_order_relaxed);            else
+                _bucketArr[bucket].second.load()[b_idx].first = val_.first;
+            
+            if constexpr(is_pair_second_atomic<value_type>)
+                _bucketArr[bucket].second.load()[b_idx].second.store(val_.second.load(std::memory_order_relaxed), 
+                                                                     std::memory_order_relaxed);
+            else
+                _bucketArr[bucket].second.load()[b_idx].second = val_.second;
+        }
+        else
+        {
+            _bucketArr[bucket].second.load()[b_idx] = val_; 
+        }
 
         return index;        
     }

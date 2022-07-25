@@ -20,20 +20,23 @@ template<
 >
 class lock_free_slot_map
 {
-    static constexpr auto get_index(const Key& k)      { const auto& [idx, gen] = k; return idx; }
-    static constexpr auto get_generation(const Key& k) { const auto& [idx, gen] = k; return gen; }
-    static constexpr void increment_generation(Key& k) { auto& [idx, gen] = k; ++gen; }
+    template<class KeySlot> 
+    static constexpr auto get_index(const KeySlot& k)      { const auto& [idx, gen] = k; return idx; }
     
-    template<class Integral> 
-    static constexpr void set_index(Key& k, Integral value) { auto& [idx, gen] = k; idx = static_cast<key_index_type>(value); }
+    template<class KeySlot> 
+    static constexpr auto& get_generation(const KeySlot& k) { const auto& [idx, gen] = k; return gen; }
+
+   
+    template<class KeySlot, class Integral> 
+    static constexpr void set_index(KeySlot& k, Integral value) { auto& [idx, gen] = k; idx = static_cast<key_index_type>(value); }
 
 public:
     using key_type             = Key;
-    using slot_type            = key_type;
-    using key_index_type       = decltype(lock_free_slot_map::get_index(std::declval<Key>()));
-    using key_generation_type  = decltype(lock_free_slot_map::get_generation(std::declval<Key>()));
+    using key_index_type       = decltype(std::declval<Key>().first);
+    using key_generation_type  = decltype(std::declval<Key>().second);
     using slot_index_type      = key_index_type;
-    using slot_generation_type = key_generation_type;
+    using slot_generation_type = std::atomic<key_generation_type>;
+    using slot_type            = std::pair<slot_index_type, slot_generation_type>;
 
     using container_type   = internal_vector<T>;
     using value_type       = T;
@@ -49,11 +52,10 @@ public:
 
     lock_free_slot_map(size_t initial_size, float reserve_factor = 2)
             : _capacity{initial_size}
-            , _size {0}
+            , _conservative_size {}
+            , _size {}
+            , _reserve_factor {(reserve_factor > 1) ? reserve_factor : 2}
     {
-        if (reserve_factor > 1)
-            _reserve_factor = reserve_factor;
-        
         _slots.reserve(_capacity + 1); // +1 for sentinel node
 
         _next_available_slot_index.store(0); // first element of slot container
@@ -74,26 +76,35 @@ public:
         slot_index_type cur_slot_idx {};
         do
         {
-            cur_slot_idx = _next_available_slot_index.load(std::memory_order_relaxed);
+            cur_slot_idx = _next_available_slot_index.load(std::memory_order_acquire);
 
 
-            if (unlikely(cur_slot_idx == _sentinel_last_slot_index.load(std::memory_order_relaxed)))
+            if (unlikely(cur_slot_idx == _sentinel_last_slot_index.load(std::memory_order_acquire)))
             {
                 reserve(_reserve_factor*_capacity);
-                while (cur_slot_idx == _sentinel_last_slot_index.load(std::memory_order_relaxed))
+                while (cur_slot_idx == _sentinel_last_slot_index.load(std::memory_order_acquire))
                     ;
             }
         }
         while (!_next_available_slot_index.compare_exchange_strong(cur_slot_idx, get_index(_slots[cur_slot_idx]))); 
 
-        slot_index_type cur_value_idx = _size.fetch_add(1); 
+        // replace object with the current last object in data array
+        size_type cur_value_idx {};
+        do 
+        {
+            cur_value_idx = _conservative_size.load(std::memory_order_acquire);
+        }
+        while (!_size.compare_exchange_strong(cur_value_idx, cur_value_idx+1));
+
         _data[cur_value_idx] = std::forward<Args...>(args...);
-        
+
         slot_type& cur_slot = _slots[cur_slot_idx]; 
         set_index(cur_slot, cur_value_idx);
         _reverse_array[cur_value_idx] = cur_slot_idx;
 
-        return {cur_slot_idx, get_generation(cur_slot)};
+        _conservative_size.store(cur_value_idx+1, std::memory_order_release);
+
+        return {cur_slot_idx, get_generation(cur_slot).load(std::memory_order_relaxed)};
     }
 
     constexpr void reserve(float new_capacity)
@@ -132,11 +143,29 @@ public:
 
     constexpr void erase(const key_type& key) 
     {
-        addToEraseQueue(key);
+        if (addToEraseQueue(key))
+        {
+            std::unique_lock ul (_iterationLock, std::try_to_lock);
+            if (ul.owns_lock())
+                drainEraseQueue();
+        }
+    }
 
-        std::unique_lock ul (_iterationLock, std::try_to_lock);
-        if (ul.owns_lock())
+    template<bool Block>
+    constexpr void flushEraseQueue()
+    {
+        if constexpr(Block) 
+        {
+            std::unique_lock ul (_iterationLock);
+            assert(ul.owns_lock());
             drainEraseQueue();
+        }
+        else 
+        {
+            std::unique_lock ul (_iterationLock, std::try_to_lock);
+            if (ul.owns_lock())
+                drainEraseQueue();
+        }
     }
 
     template <class P>
@@ -144,20 +173,15 @@ public:
     {
         std::scoped_lock sl (_iterationLock);
 
-        int i{};
-        size_t size{};
-        do
+        int i {};
+        size_t size {};
+        do 
         {
-            // the size can only increase while we own the _iterationLock.
-            // therefor we reach its current value and then check if it 
-            // increased.
-            size = this->size();
-
+            size = _conservative_size.load(std::memory_order_acquire);
             for ( ; i < size; ++i)
                 pred(_data[i]);
-
         } 
-        while (size != this->size());
+        while (size != _conservative_size.load(std::memory_order_relaxed));
 
         drainEraseQueue();
     }
@@ -168,15 +192,9 @@ public:
             _reserve_factor = val_;
     }
 
-    constexpr size_t size() const
-    {
-        return _size.load(std::memory_order_relaxed);
-    }
-
-    constexpr size_t capacity() const
-    {
-        return _capacity.load(std::memory_order_relaxed);
-    }
+    constexpr size_t size()     const { return _size.load(std::memory_order_relaxed); }
+    constexpr size_t capacity() const { return _capacity.load(std::memory_order_relaxed); }
+    constexpr bool   empty()    const { return size() == 0; }
 
     constexpr reference operator[](const key_type& key)              
     { 
@@ -209,7 +227,7 @@ public:
     constexpr std::optional<std::reference_wrapper<value_type>> find(const key_type& key) 
     {
         if (auto slot = get_slot(key))
-            return _data[get_index(*slot)];
+            return _data[get_index<slot_type>(*slot)];
         else
             return {};
     }
@@ -217,29 +235,44 @@ public:
     constexpr std::optional<std::reference_wrapper<const value_type>> find(const key_type& key) const
     {
         if (auto slot = get_slot(key))
-            return _data[get_index(*slot)];
+            return _data[get_index<slot_type>(*slot)];
         else
             return {};
     }
 
     constexpr reference find_unchecked(const key_type& key) 
     {
-        const auto& slot {_slots[get_index(key)]};
-        return _data[get_index(slot)];
+        const auto& slot {_slots[get_index<key_type>(key)]};
+        return _data[get_index<slot_type>(slot)];
     }
     
     constexpr const_reference find_unchecked(const key_type& key) const
     {
-        const auto& slot {_slots[get_index(key)]};
-        return _data[get_index(slot)];
+        const auto& slot {_slots[get_index<key_type>(key)]};
+        return _data[get_index<slot_type>(slot)];
     }
 
-    constexpr bool empty() const
-    {
-        return size() == 0;
-    }
 
 private:
+   constexpr std::optional<std::reference_wrapper<slot_type>> get_and_increment_slot(const key_type &key) noexcept
+    {
+        try
+        {
+            const auto &[idx, gen] = key;
+
+            auto &slot = _slots[idx];
+
+            key_generation_type genCpy = gen;
+            auto& slotGen = const_cast<slot_generation_type&>(get_generation(slot));
+            if (slotGen.compare_exchange_strong(genCpy, genCpy+1))
+                return slot;
+        }
+        catch(const std::out_of_range &e) 
+        {}
+        
+        return {};
+    }
+
     constexpr std::optional<std::reference_wrapper<const slot_type>> get_slot(const key_type &key) const noexcept
     {
         try
@@ -247,7 +280,7 @@ private:
             const auto &[idx, gen] = key;
 
             auto &slot = _slots[idx];
-            if (get_generation(slot) == gen)
+            if (get_generation(slot).load(std::memory_order_relaxed) == gen)
                 return slot;
         }
         catch(const std::out_of_range &e) 
@@ -263,7 +296,7 @@ private:
             const auto &[idx, gen] = key;
 
             auto &slot = _slots[idx];
-            if (get_generation(slot) == gen)
+            if (get_generation(slot).load(std::memory_order_relaxed) == gen)
                 return slot;
         }
         catch(const std::out_of_range &e) 
@@ -278,12 +311,11 @@ private:
     // not found.
     bool addToEraseQueue(const key_type &key)
     {
-        auto slot = get_slot(key);
-        if (slot.has_value())
+        auto slot = get_and_increment_slot(key);
+        if (slot)
         {
-            increment_generation(*slot);
             size_t index = _erase_array_length.fetch_add(1);
-            _erase_array.at(index) = key;
+            _erase_array[index] = key;
             return true;
         }
         return false;
@@ -306,36 +338,35 @@ private:
         size_t erase_idx {};
         do
         {
-            cur_erase_array_length = _erase_array_length.load(std::memory_order_relaxed);
+            cur_erase_array_length = _erase_array_length.load(std::memory_order_acquire);
 
             for ( ; erase_idx < cur_erase_array_length; ++erase_idx)
             {
-                const key_type &key_to_slot_to_erase = _erase_array[erase_idx];
+                const size_t slot_to_erase_idx = get_index(_erase_array[erase_idx]);
+                slot_type &slot_to_erase = _slots[slot_to_erase_idx];
+                size_t data_idx_to_free = get_index(slot_to_erase);
 
-                auto op_slot = get_slot(key_to_slot_to_erase);
-                if (op_slot)
+                // replace object with the current last object in values array (actually erasing it from slot map)
+                size_type data_arr_len {};
+                do
                 {
-                    slot_type &cur_slot = op_slot.value();
-                    increment_generation(cur_slot);    // makes the object unreachable from this point onwards from its key
+                    data_arr_len = _size.load(std::memory_order_acquire);
+                    _data[data_idx_to_free] = _data[data_arr_len-1];
+                }
+                while (!_size.compare_exchange_strong(data_arr_len, data_arr_len-1));
 
-                    // replace object with the current last object in values array (actually erasing it from slot map)
-                    size_t values_length {};
-                    do
-                    {
-                        values_length = _size.load(std::memory_order_relaxed);
-                        _data[get_index(cur_slot)] = _data[values_length-1];
-                    }
-                    while (!_size.compare_exchange_strong(values_length, values_length-1));
+                size_t slot_to_update_idx = _reverse_array[data_arr_len-1];
+                slot_type &slot_to_update = _slots[slot_to_update_idx];
+                set_index(slot_to_update, data_idx_to_free);
+                _reverse_array[data_idx_to_free] = slot_to_update_idx;
 
-                    slot_type &slot_to_update = _slots[ _reverse_array[values_length-1] ];
-                    set_index(slot_to_update, get_index(cur_slot));
+                _conservative_size.store(data_arr_len-1, std::memory_order_release);
 
-                    // add 'erased' slot back to free slot list
-                    {
-                        std::scoped_lock sl {_sentinelLock};
-                        set_index(_slots[_sentinel_last_slot_index.load(std::memory_order_relaxed)], get_index(key_to_slot_to_erase));
-                        _sentinel_last_slot_index.store(get_index(key_to_slot_to_erase), std::memory_order_relaxed);
-                    }
+                // add 'erased' slot back to free slot list
+                {
+                    std::scoped_lock sl {_sentinelLock};
+                    set_index(_slots[_sentinel_last_slot_index.load(std::memory_order_relaxed)], slot_to_erase_idx);
+                    _sentinel_last_slot_index.store(slot_to_erase_idx, std::memory_order_release);
                 }
             }
         }
@@ -344,17 +375,18 @@ private:
         assert(cur_erase_array_length == erase_idx);
     }
 
-    gby::internal_vector<Key>   _slots;
+    gby::internal_vector<slot_type> _slots;
+    container_type                  _data;
+    std::vector<size_t>             _reverse_array = std::vector<size_t>(_capacity);    
+
     std::atomic<key_index_type> _next_available_slot_index;
     std::atomic<key_index_type> _sentinel_last_slot_index;
 
-    container_type        _data;
-    std::atomic<uint64_t> _size;
-    std::atomic<uint64_t> _capacity;
+    std::atomic<size_type> _size;
+    std::atomic<size_type> _conservative_size;
+    std::atomic<size_type> _capacity;
 
     float _reserve_factor;
-
-    std::vector<size_t> _reverse_array = std::vector<size_t>(_capacity);
 
     // stack used to store elements to be deleted. This is only used if trying
     // to delete while iterating- otherwise the elemnt gets deleted on the spot)

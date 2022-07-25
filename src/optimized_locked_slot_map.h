@@ -7,6 +7,7 @@
 #include <chrono>
 #include <atomic>
 #include <mutex>
+#include <shared_mutex>
 #include <stdexcept>
 #include <tuple>
 #include <limits>
@@ -21,7 +22,7 @@ template<
     typename Key = std::pair<unsigned, unsigned>,
     typename Container = std::vector<T>
 >
-class lock_free_const_sized_slot_map
+class optimized_locked_slot_map
 {
     template<class KeySlot> 
     static constexpr auto get_index(const KeySlot& k)      { const auto& [idx, gen] = k; return idx; }
@@ -48,8 +49,9 @@ public:
 
     static constexpr size_t null_key_index = std::numeric_limits<key_index_type>::max();
 
-    lock_free_const_sized_slot_map() 
-            : _erase_array_length {}
+    optimized_locked_slot_map() 
+            : _conservative_erase_array_length {}
+            , _erase_array_length {}
             , _conservative_size {}
             , _size {}
     {
@@ -89,21 +91,21 @@ public:
         }
         while (!_next_available_slot_index.compare_exchange_strong(cur_slot_idx, get_index<slot_type>(_slots[cur_slot_idx]))); 
 
-        slot_index_type cur_value_idx {};
-        do 
+        slot_type* cur_slot {};
         {
-            cur_value_idx = _conservative_size.load(std::memory_order_acquire);
-        }
-        while (!_size.compare_exchange_strong(cur_value_idx, cur_value_idx+1));
+            std::shared_lock sl {_eraseMut};
+
+            slot_index_type cur_value_idx = _size.fetch_add(1, std::memory_order_acq_rel);
+
+            _data[cur_value_idx] = std::forward<Args...>(args...);
+            _conservative_size.store(cur_value_idx+1, std::memory_order_release);
+
+            cur_slot = &_slots[cur_slot_idx]; 
+            set_index(*cur_slot, cur_value_idx);
+            _reverse_array[cur_value_idx] = cur_slot_idx;            
+        }        
         
-        _data[cur_value_idx] = std::forward<Args...>(args...);
-        slot_type& cur_slot = _slots[cur_slot_idx]; 
-        set_index(cur_slot, cur_value_idx);
-        _reverse_array[cur_value_idx] = cur_slot_idx;
-
-        _conservative_size.store(cur_value_idx+1, std::memory_order_release);
-
-        return {cur_slot_idx, get_generation(cur_slot).load(std::memory_order_relaxed)};       
+        return {cur_slot_idx, get_generation(*cur_slot).load(std::memory_order_acquire)};       
     }
 
     // this is non blocking. if another thread is currently iterating,
@@ -112,26 +114,7 @@ public:
     {
         if (addToEraseQueue(key))
         {
-        std::unique_lock ul (_iterationLock, std::try_to_lock);
-        if (ul.owns_lock())
             drainEraseQueue();
-        }
-    }
-
-    template<bool Block>
-    constexpr void flushEraseQueue()
-    {
-        if constexpr(Block) 
-        {
-            std::unique_lock ul (_iterationLock);
-            assert(ul.owns_lock());
-            drainEraseQueue();
-        }
-        else 
-        {
-            std::unique_lock ul (_iterationLock, std::try_to_lock);
-            if (ul.owns_lock())
-                drainEraseQueue();
         }
     }
 
@@ -139,18 +122,19 @@ public:
     template <class P>
     constexpr void iterate_map(P pred) 
     {
-        std::unique_lock ul (_iterationLock);
-        assert(ul.owns_lock());
-
-        size_t i {};
-        size_t size {};
-        do 
         {
-            size = _conservative_size.load(std::memory_order_acquire);
-            for ( ; i < size; ++i)
-                pred(_data[i]);
-        } 
-        while (size != _conservative_size.load(std::memory_order_relaxed));
+            std::shared_lock sl {_eraseMut};
+
+            size_t i {};
+            size_t size {};
+            do 
+            {
+                size = _conservative_size.load(std::memory_order_acquire);
+                for ( ; i < size; ++i)
+                    pred(_data[i]);
+            } 
+            while (size != _conservative_size.load(std::memory_order_acquire));
+        }
 
         drainEraseQueue();
     }
@@ -216,7 +200,7 @@ public:
     }
 
 private:
-    constexpr std::optional<std::reference_wrapper<slot_type>> get_and_increment_slot(const key_type &key) noexcept
+    constexpr bool validate_and_increment_slot(const key_type &key) noexcept
     {
         try
         {
@@ -227,12 +211,12 @@ private:
             key_generation_type genCpy = gen;
             auto& slotGen = const_cast<slot_generation_type&>(get_generation(slot));
             if (slotGen.compare_exchange_strong(genCpy, genCpy+1))
-                return slot;
+                return true;
         }
         catch(const std::out_of_range &e) 
         {}
         
-        return {};
+        return false;
     }
 
     constexpr std::optional<std::reference_wrapper<const slot_type>> get_slot(const key_type &key) const noexcept
@@ -269,11 +253,11 @@ private:
 
     bool addToEraseQueue(const key_type &key)
     {
-        auto slot = get_and_increment_slot(key);
-        if (slot)
+        if (validate_and_increment_slot(key))
         {
-            size_t index = _erase_array_length.fetch_add(1);
-            _erase_array[index] = key;
+            size_t index = _erase_array_length.fetch_add(1, std::memory_order_acq_rel);
+            _erase_array[index] = get_index(key);
+            _conservative_erase_array_length.store(index+1, std::memory_order_release);
             return true;
         }
         return false;
@@ -291,32 +275,29 @@ private:
                 - switch end-of-values slot to this index & decrement values size
                 - add current slot to free slots list
         */
+        std::lock_guard lg {_eraseMut};
+
         size_t cur_erase_array_length {};
         size_t erase_idx {};
         do 
         {
-            cur_erase_array_length = _erase_array_length.load(std::memory_order_acquire);
+            cur_erase_array_length = _conservative_erase_array_length.load(std::memory_order_acquire);
 
             for ( ; erase_idx < cur_erase_array_length; ++erase_idx) 
             {
-                const size_t slot_to_erase_idx = get_index(_erase_array[erase_idx]);
+                const size_t slot_to_erase_idx = _erase_array[erase_idx];
                 slot_type &slot_to_erase = _slots[slot_to_erase_idx];
                 size_t data_idx_to_free = get_index(slot_to_erase);
 
                 // replace object with the current last object in data array
-                slot_index_type data_arr_len {};
-                do 
-                {
-                    data_arr_len = _conservative_size.load(std::memory_order_acquire);
-                    _data[data_idx_to_free] = _data[data_arr_len-1];
-                }
-                while (!_size.compare_exchange_strong(data_arr_len, data_arr_len-1));
+                slot_index_type data_arr_len = _size.fetch_sub(1, std::memory_order_acq_rel);
+                _data[data_idx_to_free] = _data[data_arr_len-1];
 
                 size_t slot_to_update_idx = _reverse_array[data_arr_len-1];
                 slot_type &slot_to_update = _slots[slot_to_update_idx];
                 set_index(slot_to_update, data_idx_to_free);
                 _reverse_array[data_idx_to_free] = slot_to_update_idx;
-                
+
                 _conservative_size.store(data_arr_len-1, std::memory_order_release);
 
                 // add 'erased' slot back to free slot list
@@ -343,8 +324,10 @@ private:
     
     // stack used to store elements to be deleted. This is only used if trying
     // to delete while iterating- otherwise the elemnt gets deleted on the spot
-    std::vector<key_type> _erase_array = std::vector<key_type>(Size);
+    std::vector<key_index_type> _erase_array = std::vector<key_index_type>(Size);
     std::atomic<size_t>  _erase_array_length;
+    std::atomic<size_t>  _conservative_erase_array_length;
+
 
     // number of elements in the values container. Unless caught in the middle 
     // of an insertion/deletion, this will also be the size of used slots
@@ -352,8 +335,7 @@ private:
     std::atomic<slot_index_type> _size;
     std::atomic<slot_index_type> _conservative_size;
 
-    // enforces that we can't iterate & delete at the same time
-    std::mutex _iterationLock;
+    std::shared_mutex _eraseMut;
 };
 
 } // namespace gby

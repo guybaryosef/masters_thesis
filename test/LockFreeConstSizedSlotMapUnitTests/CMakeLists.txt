@@ -1,10 +1,10 @@
 
-add_executable(LockFreeconstSizedSlotMapUnitTests
+add_executable(LockFreeConstSizedSlotMapUnitTests
     ../main.cpp
     LockFreeConstSizedMapUnit.cpp
 )
 
-target_link_libraries(LockFreeconstSizedSlotMapUnitTests
+target_link_libraries(LockFreeConstSizedSlotMapUnitTests
     sg14
     gtest
     gtest_main
@@ -12,4 +12,4 @@ target_link_libraries(LockFreeconstSizedSlotMapUnitTests
 )
 
 include(GoogleTest)
-gtest_discover_tests(LockFreeconstSizedSlotMapUnitTests)
+gtest_discover_tests(LockFreeConstSizedSlotMapUnitTests)
