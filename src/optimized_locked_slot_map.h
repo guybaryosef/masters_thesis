@@ -93,16 +93,24 @@ public:
 
         slot_type* cur_slot {};
         {
-            std::shared_lock sl {_eraseMut};
+            std::shared_lock lg {_eraseMut};
 
             slot_index_type cur_value_idx = _size.fetch_add(1, std::memory_order_acq_rel);
 
             _data[cur_value_idx] = std::forward<Args...>(args...);
-            _conservative_size.store(cur_value_idx+1, std::memory_order_release);
 
             cur_slot = &_slots[cur_slot_idx]; 
             set_index(*cur_slot, cur_value_idx);
             _reverse_array[cur_value_idx] = cur_slot_idx;            
+
+            slot_index_type conservSize{};
+            do 
+            {
+                conservSize = _conservative_size.load(std::memory_order_acquire);
+                if (get_index(_slots[_reverse_array[conservSize]]) != conservSize)
+                    break;
+            }
+            while (_conservative_size.compare_exchange_strong(conservSize, conservSize+1));
         }        
         
         return {cur_slot_idx, get_generation(*cur_slot).load(std::memory_order_acquire)};       
@@ -110,12 +118,11 @@ public:
 
     // this is non blocking. if another thread is currently iterating,
     // add to erase queue and return. 
+    template<bool Block=false>
     constexpr void erase(const key_type& key) 
     {
         if (addToEraseQueue(key))
-        {
-            drainEraseQueue();
-        }
+            drainEraseQueue<Block>();                
     }
 
     // due to the iterationLock, size can only increase inside this method
@@ -199,6 +206,24 @@ public:
         return _data[get_index<slot_type>(slot)];
     }
 
+    template<bool Block=false>
+    void drainEraseQueue()
+    {
+        if constexpr (Block)
+        {
+            std::unique_lock ul {_eraseMut};
+            drainEraseQueueImpl();
+        }
+        else
+        {
+            std::unique_lock ul {_eraseMut, std::try_to_lock};
+            if (ul.owns_lock())
+            {
+                drainEraseQueueImpl();                
+            }
+        }
+    }  
+
 private:
     constexpr bool validate_and_increment_slot(const key_type &key) noexcept
     {
@@ -263,9 +288,10 @@ private:
         return false;
     }
 
-    // only one thread should be inside this function at a time
-    void drainEraseQueue()
-    {  
+    // should only ever be called by drainEraseQueue - don't call this
+    // directly.
+    void drainEraseQueueImpl()
+    {
         /*
             get size of array queue
             go one by one:
@@ -275,8 +301,6 @@ private:
                 - switch end-of-values slot to this index & decrement values size
                 - add current slot to free slots list
         */
-        std::lock_guard lg {_eraseMut};
-
         size_t cur_erase_array_length {};
         size_t erase_idx {};
         do 
