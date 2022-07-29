@@ -1,6 +1,6 @@
 
 
-#include "RegressionTestHelpers.h"
+#include "../RegressionTestHelpers.h"
 #include "locked_slot_map.h"
 
 #include <gtest/gtest.h>
