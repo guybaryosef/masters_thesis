@@ -1,3 +1,4 @@
+
 #pragma once
 
 #include <gtest/gtest.h>
@@ -11,9 +12,7 @@
 
 constexpr size_t maxStrLen {50};
 
-char alphaNum2[] = "0123456789"
-                  "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                  "abcdefghijklmnopqrstuvwxyz";
+extern char alphaNum2[63];
 
 struct TestObj
 {

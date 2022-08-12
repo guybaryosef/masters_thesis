@@ -1,12 +1,5 @@
-add_executable(InternalVector_UnitTests
-    ../main.cpp
-    UnitTests.cpp
-)
 
-target_link_libraries(InternalVector_UnitTests
-    gtest
-    gtest_main
+target_sources(GBY_SlotMap_UnitTests
+    PRIVATE
+        UnitTests.cpp
 )
-
-include(GoogleTest)
-gtest_discover_tests(InternalVector_UnitTests)

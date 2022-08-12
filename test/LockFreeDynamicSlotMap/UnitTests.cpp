@@ -8,7 +8,7 @@
 #include <deque>
 
 
-TEST(LockFreeUnit, IntElement)
+TEST(LockFreeDynamicSize, IntElement)
 {
     gby::lock_free_slot_map<int> intMap;
     std::array<int, 3> vals {48, 0, -9823};
@@ -16,7 +16,7 @@ TEST(LockFreeUnit, IntElement)
     addQueryAndRemoveElement(intMap, vals);
 }
 
-TEST(LockFreeUnit, StringElement)
+TEST(LockFreeDynamicSize, StringElement)
 {
     gby::lock_free_slot_map<std::string> stringMap;
     std::array<std::string, 3> vals {"this is a string", {}, "ABC."};
@@ -24,7 +24,7 @@ TEST(LockFreeUnit, StringElement)
     addQueryAndRemoveElement(stringMap, vals);
 }
 
-TEST(LockFreeUnit, TestObjElement)
+TEST(LockFreeDynamicSize, TestObjElement)
 {
     gby::lock_free_slot_map<TestObj, std::pair<int32_t, uint64_t>> testObjMap;
     std::array<TestObj, 3> vals { TestObj{156, 'b', "this is a string"}, 
@@ -34,7 +34,7 @@ TEST(LockFreeUnit, TestObjElement)
     addQueryAndRemoveElement(testObjMap, vals);
 }
 
-TEST(LockFreeUnit, IterateOverTestObj)
+TEST(LockFreeDynamicSize, IterateOverTestObj)
 {
     gby::lock_free_slot_map<TestObj, std::pair<int32_t, uint64_t>> testObjMap;
 
