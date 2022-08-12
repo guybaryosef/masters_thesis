@@ -5,13 +5,15 @@
 #include <vector>
 #include <deque>
 #include <chrono>
+#include <assert.h>
 #include <atomic>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
 #include <stdexcept>
 #include <tuple>
 #include <limits>
-
+#include <iostream>
 
 namespace gby
 {
@@ -62,7 +64,7 @@ public:
             _slots[slot_idx] = std::make_pair(slot_idx+1, key_generation_type{});
         }
         
-        _sentinel_last_slot_index.store(_slots.size()-1);
+        _sentinel_last_slot_index.store(_slots.size());
     }
 
     constexpr key_type insert(const T& value)   { return this->emplace(value);            }
@@ -110,7 +112,7 @@ public:
                 if (get_index(_slots[_reverse_array[conservSize]]) != conservSize)
                     break;
             }
-            while (_conservative_size.compare_exchange_strong(conservSize, conservSize+1));
+            while (conservSize < Size && _conservative_size.compare_exchange_strong(conservSize, conservSize+1));
         }        
         
         return {cur_slot_idx, get_generation(*cur_slot).load(std::memory_order_acquire)};       
@@ -339,8 +341,8 @@ private:
 
 
     std::vector<slot_type> _slots = std::vector<slot_type>(Size+1); // +1 for sentinel
-    container_type         _data = container_type(Size);
-    std::vector<size_t>    _reverse_array = std::vector<size_t>(Size);
+    container_type         _data = container_type(Size+1);
+    std::vector<size_t>    _reverse_array = std::vector<size_t>(Size+1);
 
     // free list used to keep track of the available slots in the slot array
     std::atomic<key_index_type> _next_available_slot_index;

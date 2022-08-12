@@ -11,7 +11,7 @@
 constexpr size_t iterationCount {50000};
 
 /////////// SCMP ///////////
-TEST(LockFreeConstSizedSlotMapRegression, SCMPIntElement)
+TEST(LockFreeConstSized, SCMPIntElement)
 {
     gby::lock_free_const_sized_slot_map<int, iterationCount> map;
     test_SCMP<iterationCount, 3>(map, []() { return rand();}, false);
@@ -20,7 +20,7 @@ TEST(LockFreeConstSizedSlotMapRegression, SCMPIntElement)
     test_SCMP<iterationCount, 3>(map2, []() { return rand();}, true);
 }
 
-TEST(LockFreeConstSizedSlotMapRegression, SCMPStringElement)
+TEST(LockFreeConstSized, SCMPStringElement)
 {
     constexpr size_t strCount {iterationCount};
     auto strInput = genStrInput<strCount>();
@@ -32,7 +32,7 @@ TEST(LockFreeConstSizedSlotMapRegression, SCMPStringElement)
     test_SCMP<strCount, 3>(map2, [&strInput]() { return strInput[rand()%strCount];}, true);
 }
 
-TEST(LockFreeConstSizedSlotMapRegression, SCMPTestObjElement)
+TEST(LockFreeConstSized, SCMPTestObjElement)
 {
     constexpr size_t testObjCount {iterationCount};
     auto testObjInput = genTestObj<testObjCount>();
@@ -48,13 +48,13 @@ TEST(LockFreeConstSizedSlotMapRegression, SCMPTestObjElement)
 constexpr size_t WriterCount {2};
 constexpr size_t MCMP_writesPerWriter {iterationCount/WriterCount};
 
-TEST(LockFreeConstSizedSlotMapRegression, MCMPIntElement)
+TEST(LockFreeConstSized, MCMPIntElement)
 {
     gby::lock_free_const_sized_slot_map<int, iterationCount> map;
     test_MCMP<WriterCount, MCMP_writesPerWriter, 2, 3>(map, [] { return rand();});
 }
 
-TEST(LockFreeConstSizedSlotMapRegression, MCMPStringElement)
+TEST(LockFreeConstSized, MCMPStringElement)
 {
     constexpr size_t strCount {iterationCount};
     auto strInput = genStrInput<strCount>();
@@ -63,7 +63,7 @@ TEST(LockFreeConstSizedSlotMapRegression, MCMPStringElement)
     test_MCMP<WriterCount, MCMP_writesPerWriter, 1, 5>(map, [&strInput] { return strInput[rand()%strCount];});
 }
 
-TEST(LockFreeConstSizedSlotMapRegression, MCMPTestObjElement)
+TEST(LockFreeConstSized, MCMPTestObjElement)
 {
     constexpr size_t testObjCount {iterationCount};
     auto testObjInput = genTestObj<testObjCount>();
