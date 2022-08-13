@@ -135,14 +135,24 @@ public:
         return index;        
     }
 
+    template<bool decrementSize=false>
     constexpr bool update(const size_type idx_, const value_type& val_)
     {
         if (likely(idx_ < size()))
         {
             at(idx_) = val_;
+            if constexpr (decrementSize)
+            {
+                _size.fetch_sub(1, std::memory_order_acq_rel);
+            }
             return true;
         }
         return false;
+    }
+
+    constexpr bool clearIfSizeEquals(size_t size_)
+    {
+        return _size.compare_exchange_strong(size_, 0);
     }
 
     constexpr value_type pop_back()
@@ -171,9 +181,9 @@ public:
             allocate_bucket(_usedBucketCount+1);
     }
 
-    constexpr size_type size() const
+    constexpr size_type size(std::memory_order mo_=std::memory_order_acquire) const
     {
-        return _size.load(std::memory_order_relaxed);
+        return _size.load(mo_);
     }
 
     constexpr size_type capacity() const

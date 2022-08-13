@@ -21,7 +21,7 @@ template<
     typename T,
     typename Key = std::pair<unsigned, unsigned>
 >
-class slot_map
+class dynamic_slot_map
 {
     template<class KeySlot> 
     static constexpr auto get_index(const KeySlot& k)      { const auto& [idx, gen] = k; return idx; }
@@ -51,18 +51,13 @@ public:
 
     static constexpr size_t null_key_index = std::numeric_limits<key_index_type>::max();
 
-    slot_map() = default;
-
-    slot_map(size_t initial_size, float reserve_factor = 2)
+    dynamic_slot_map(slot_index_type initial_size=100, float reserve_factor = 2)
             : _capacity{initial_size}
-            , _conservative_size {}
-            , _size {}
             , _reserve_factor {(reserve_factor > 1) ? reserve_factor : 2}
     {
         _slots.reserve(_capacity + 1); // +1 for sentinel node
-        _reverse_array.reserve(_capacity + 1); // +1 for sentinel node
+        _reverse_array.resize(_capacity + 1); // +1 for sentinel node
         _erase_array.reserve(_capacity + 1); // +1 for sentinel node
-
 
         _next_available_slot_index.store(0); // first element of slot container
         for (slot_index_type slot_idx {}; slot_idx < _capacity; ++slot_idx)
@@ -70,7 +65,7 @@ public:
             _slots.push_back(std::make_pair(slot_idx+1, key_generation_type{}));
         }
         
-        _slots.push_back(std::make_pair(_capacity, key_generation_type{}));
+        _slots.push_back(std::make_pair(_capacity.load(), key_generation_type{}));
         _sentinel_last_slot_index.store(_capacity);
     }
     
@@ -97,23 +92,11 @@ public:
         slot_type* cur_slot {};
         {
             std::shared_lock lg {_eraseMut};
-            slot_index_type cur_value_idx = _size.fetch_add(1, std::memory_order_acq_rel);
-
-            _data[cur_value_idx] = std::forward<Args...>(args...);
+            slot_index_type cur_value_idx = _data.push_back(std::forward<Args...>(args...));
 
             cur_slot = &_slots[cur_slot_idx]; 
             set_index(*cur_slot, cur_value_idx);
             _reverse_array[cur_value_idx] = cur_slot_idx;            
-
-            slot_index_type conservSize{};
-            do 
-            {
-                conservSize = _conservative_size.load(std::memory_order_acquire);
-                if (get_index(_slots[_reverse_array[conservSize]]) != conservSize)
-                    break;
-            }
-            while (conservSize < _size.load(std::memory_order_acquire) && 
-                   _conservative_size.compare_exchange_strong(conservSize, conservSize+1));
         }
         
         return {cur_slot_idx, get_generation(*cur_slot).load(std::memory_order_acquire)};       
@@ -131,7 +114,7 @@ public:
 
         // +1 for the sentinel node
         _data.reserve(requested_capacity+1);
-        _reverse_array.reserve(requested_capacity+1);
+        _reverse_array.resize(requested_capacity+1);
         _erase_array.reserve(requested_capacity+1);        
         _slots.reserve(requested_capacity + 1); 
 
@@ -165,14 +148,14 @@ public:
             std::shared_lock sl {_eraseMut};
 
             size_t i {};
-            size_t size {};
+            size_t sz {};
             do 
             {
-                size = _conservative_size.load(std::memory_order_acquire);
-                for ( ; i < size; ++i)
+                sz = size();
+                for ( ; i < sz; ++i)
                     pred(_data[i]);
             } 
-            while (size != _conservative_size.load(std::memory_order_acquire));
+            while (sz != size());
         }
         
         drainEraseQueue();
@@ -184,7 +167,7 @@ public:
             _reserve_factor = val_;
     }
 
-    constexpr size_t size()     const { return _size.load(std::memory_order_relaxed); }
+    constexpr size_t size()     const { return _data.size(std::memory_order_acquire); }
     constexpr size_t capacity() const { return _capacity.load(std::memory_order_acquire); }
     constexpr bool   empty()    const { return size() == 0; }
 
@@ -318,9 +301,7 @@ private:
     {
         if (validate_and_increment_slot(key))
         {
-            size_t index = _erase_array_length.fetch_add(1, std::memory_order_acq_rel);
-            _erase_array[index] = get_index(key);
-            _conservative_erase_array_length.store(index+1, std::memory_order_release);
+            _erase_array.push_back(get_index(key));
             return true;
         }
         return false;
@@ -333,7 +314,7 @@ private:
         size_t erase_idx {};
         do
         {
-            cur_erase_array_length = _conservative_erase_array_length.load(std::memory_order_acquire);
+            cur_erase_array_length = _erase_array.size();
 
             for ( ; erase_idx < cur_erase_array_length; ++erase_idx)
             {
@@ -342,15 +323,13 @@ private:
                 size_t data_idx_to_free = get_index(slot_to_erase);
 
                 // replace object with the current last object in values array (actually erasing it from slot map)
-                slot_index_type data_arr_len = _size.fetch_sub(1, std::memory_order_acq_rel);
-                _data[data_idx_to_free] = _data[data_arr_len-1];
+                slot_index_type data_arr_len = _data.size();
+                _data.template update<true>(data_idx_to_free, _data[data_arr_len-1]);
 
                 size_t slot_to_update_idx = _reverse_array[data_arr_len-1];
                 slot_type &slot_to_update = _slots[slot_to_update_idx];
                 set_index(slot_to_update, data_idx_to_free);
                 _reverse_array[data_idx_to_free] = slot_to_update_idx;
-
-                _conservative_size.store(data_arr_len-1, std::memory_order_release);
 
                 // add 'erased' slot back to free slot list
                 key_index_type previous_sentinel = _sentinel_last_slot_index.load(std::memory_order_acquire);
@@ -358,20 +337,16 @@ private:
                 _sentinel_last_slot_index.store(slot_to_erase_idx, std::memory_order_release);                    _sentinel_last_slot_index.store(slot_to_erase_idx, std::memory_order_release);
             }
         }
-        while (!_erase_array_length.compare_exchange_strong(cur_erase_array_length, 0));
-        
-        assert(cur_erase_array_length == erase_idx);
+        while (!_erase_array.clearIfSizeEquals(erase_idx));
     }
 
     gby::internal_vector<slot_type> _slots;
     container_type                  _data;
-    gby::internal_vector<slot_index_type> _reverse_array;    
+    std::vector<slot_index_type> _reverse_array;    
 
     std::atomic<key_index_type> _next_available_slot_index;
     std::atomic<key_index_type> _sentinel_last_slot_index;
 
-    std::atomic<slot_index_type> _size;
-    std::atomic<slot_index_type> _conservative_size;
     std::atomic<slot_index_type> _capacity;
 
     float _reserve_factor;
@@ -379,8 +354,6 @@ private:
     // stack used to store elements to be deleted. This is only used if trying
     // to delete while iterating- otherwise the elemnt gets deleted on the spot)
     gby::internal_vector<slot_index_type> _erase_array;
-    std::atomic<size_t> _erase_array_length;
-    std::atomic<size_t> _conservative_erase_array_length;
 
     // enforces that we can't iterate & delete at the same time
     std::shared_mutex _eraseMut;

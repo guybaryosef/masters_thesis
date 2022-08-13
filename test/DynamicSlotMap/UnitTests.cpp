@@ -24,6 +24,30 @@ TEST(DynamicallyResizable, StringElement)
     addQueryAndRemoveElement(stringMap, vals);
 }
 
+
+TEST(DynamicallyResizable, StringMultipleDynamicResize)
+{
+    gby::dynamic_slot_map<std::string> stringMap(1, 2);
+    std::array<std::string, 10> vals {
+        "this is a string", {}, "ABC.",
+        "asdf asd", "asdfsa", "a", "asdf",
+        "this is a string", {}, "ABC."};
+
+    std::vector<gby::dynamic_slot_map<std::string>::key_type> keys;
+    for (auto v : vals)
+        keys.push_back(stringMap.insert(v));
+
+    ASSERT_EQ(10, stringMap.size());
+
+    for (int i=0; i<10; ++i)
+    {
+        auto k = keys[i];
+        auto v = vals[i];
+        auto mapV = stringMap[k];
+        ASSERT_EQ(v, mapV);
+    }
+}
+
 TEST(DynamicallyResizable, TestObjElement)
 {
     gby::dynamic_slot_map<TestObj, std::pair<int32_t, uint64_t>> testObjMap;
