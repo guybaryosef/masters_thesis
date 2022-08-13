@@ -1,32 +1,32 @@
 
 #include "../UnitTestHelpers.h"
 
-#include "lock_free_slot_map.h"
+#include "dynamic_slot_map.h"
 
 #include <gtest/gtest.h>
 #include <string>
 #include <deque>
 
 
-TEST(LockFreeDynamicSize, IntElement)
+TEST(DynamicallyResizable, IntElement)
 {
-    gby::lock_free_slot_map<int> intMap;
+    gby::dynamic_slot_map<int> intMap;
     std::array<int, 3> vals {48, 0, -9823};
 
     addQueryAndRemoveElement(intMap, vals);
 }
 
-TEST(LockFreeDynamicSize, StringElement)
+TEST(DynamicallyResizable, StringElement)
 {
-    gby::lock_free_slot_map<std::string> stringMap;
+    gby::dynamic_slot_map<std::string> stringMap;
     std::array<std::string, 3> vals {"this is a string", {}, "ABC."};
 
     addQueryAndRemoveElement(stringMap, vals);
 }
 
-TEST(LockFreeDynamicSize, TestObjElement)
+TEST(DynamicallyResizable, TestObjElement)
 {
-    gby::lock_free_slot_map<TestObj, std::pair<int32_t, uint64_t>> testObjMap;
+    gby::dynamic_slot_map<TestObj, std::pair<int32_t, uint64_t>> testObjMap;
     std::array<TestObj, 3> vals { TestObj{156, 'b', "this is a string"}, 
                                   TestObj{}, 
                                   TestObj{-124, 'Q', "anotherSTRING"} }; 
@@ -34,9 +34,9 @@ TEST(LockFreeDynamicSize, TestObjElement)
     addQueryAndRemoveElement(testObjMap, vals);
 }
 
-TEST(LockFreeDynamicSize, IterateOverTestObj)
+TEST(DynamicallyResizable, IterateOverTestObj)
 {
-    gby::lock_free_slot_map<TestObj, std::pair<int32_t, uint64_t>> testObjMap;
+    gby::dynamic_slot_map<TestObj, std::pair<int32_t, uint64_t>> testObjMap;
 
     std::vector<decltype(testObjMap)::key_type> keys{};
     std::vector<TestObj> values {

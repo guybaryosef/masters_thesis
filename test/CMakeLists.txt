@@ -35,7 +35,7 @@ add_subdirectory(benchmarks)
 
 # the different slot maps
 add_subdirectory(LockedSlotMap)
-add_subdirectory(LockFreeDynamicSlotMap)
+add_subdirectory(DynamicSlotMap)
 add_subdirectory(LockFreeConstSizedSlotMap)
 add_subdirectory(OptimizedLockedSlotMap)
 

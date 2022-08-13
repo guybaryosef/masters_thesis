@@ -13,8 +13,10 @@
 
 #include <vector>
 #include <math.h>
+#include <assert.h>
 #include <concepts>
 #include <atomic>
+#include <array>
 
 #include "utils.h"
 

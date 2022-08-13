@@ -1,5 +1,5 @@
 /*
- * locked_slot_map.h - A lock-free impelemntation of a slot_map.
+ * slot_map.h - A lock-free impelemntation of a slot_map.
  */
 
 #pragma once
@@ -8,6 +8,9 @@
 
 #include <utility>
 #include <vector>
+#include <mutex>
+#include <optional>
+#include <assert.h>
 #include <shared_mutex>
 
 
@@ -18,7 +21,7 @@ template<
     typename T,
     typename Key = std::pair<unsigned, unsigned>
 >
-class lock_free_slot_map
+class slot_map
 {
     template<class KeySlot> 
     static constexpr auto get_index(const KeySlot& k)      { const auto& [idx, gen] = k; return idx; }
@@ -48,9 +51,9 @@ public:
 
     static constexpr size_t null_key_index = std::numeric_limits<key_index_type>::max();
 
-    lock_free_slot_map() = default;
+    slot_map() = default;
 
-    lock_free_slot_map(size_t initial_size, float reserve_factor = 2)
+    slot_map(size_t initial_size, float reserve_factor = 2)
             : _capacity{initial_size}
             , _conservative_size {}
             , _size {}
