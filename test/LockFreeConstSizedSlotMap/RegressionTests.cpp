@@ -22,26 +22,26 @@ TEST(LockFreeConstSized, SCMPIntElement)
 
 TEST(LockFreeConstSized, SCMPStringElement)
 {
-    constexpr size_t strCount {iterationCount};
+    constexpr size_t strCount {5};
     auto strInput = genStrInput<strCount>();
 
     gby::lock_free_const_sized_slot_map<std::string, iterationCount> map;
-    test_SCMP<strCount, 3>(map, [&strInput]() { return strInput[rand()%strCount];}, false);
+    test_SCMP<iterationCount, 3>(map, [&strInput]() { return strInput[rand()%strCount];}, false);
 
     gby::lock_free_const_sized_slot_map<std::string, iterationCount> map2;
-    test_SCMP<strCount, 3>(map2, [&strInput]() { return strInput[rand()%strCount];}, true);
+    test_SCMP<iterationCount, 3>(map2, [&strInput]() { return strInput[rand()%strCount];}, true);
 }
 
 TEST(LockFreeConstSized, SCMPTestObjElement)
 {
-    constexpr size_t testObjCount {iterationCount};
+    constexpr size_t testObjCount {5};
     auto testObjInput = genTestObj<testObjCount>();
 
     gby::lock_free_const_sized_slot_map<TestObj, iterationCount, std::pair<int32_t, uint64_t>> map;
-    test_SCMP<testObjCount, 3>(map, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, false);
+    test_SCMP<iterationCount, 3>(map, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, false);
 
     gby::lock_free_const_sized_slot_map<TestObj, iterationCount, std::pair<int32_t, uint64_t>> map2;
-    test_SCMP<testObjCount, 3>(map2, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, true);
+    test_SCMP<iterationCount, 3>(map2, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, true);
 }
 
 /////////// MCMP ///////////
@@ -56,7 +56,7 @@ TEST(LockFreeConstSized, MCMPIntElement)
 
 TEST(LockFreeConstSized, MCMPStringElement)
 {
-    constexpr size_t strCount {iterationCount};
+    constexpr size_t strCount {5};
     auto strInput = genStrInput<strCount>();
 
     gby::lock_free_const_sized_slot_map<std::string, iterationCount> map;
@@ -65,7 +65,7 @@ TEST(LockFreeConstSized, MCMPStringElement)
 
 TEST(LockFreeConstSized, MCMPTestObjElement)
 {
-    constexpr size_t testObjCount {iterationCount};
+    constexpr size_t testObjCount {5};
     auto testObjInput = genTestObj<testObjCount>();
 
     gby::lock_free_const_sized_slot_map<TestObj, iterationCount, std::pair<int32_t, uint64_t>> map;

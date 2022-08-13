@@ -25,22 +25,12 @@ target_link_libraries(GBY_SlotMap_UnitTests
     GBY_SlotMap
 )
 
-add_executable(GBY_SlotMap_MicroBenchmarks)
-
-target_link_libraries(GBY_SlotMap_MicroBenchmarks
-    gtest
-    benchmark::benchmark
-    sg14
-    GBY_SlotMap
-)
-
 include(GoogleTest)
 gtest_discover_tests(GBY_SlotMap_UnitTests)
 gtest_discover_tests(GBY_SlotMap_RegressionTests)
-# gtest_discover_tests(GBY_SlotMap_MicroBenchmarks)
 
 
-
+# all benchmarking
 add_subdirectory(benchmarks)
 
 # the different slot maps

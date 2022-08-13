@@ -22,10 +22,6 @@ fi
 pushd build/$1 > /dev/null
 
 cmake -DCMAKE_CXX_COMPILER=g++-11 -DCMAKE_BUILD_TYPE=$1 ../..
-cmake --build .
-
-# run unit tests
-# ./bin/SlotMapUnitTests
-#./bin/SlotMapRegressionTests
+cmake --build . -j 4
 
 popd > /dev/null

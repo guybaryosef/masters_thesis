@@ -30,7 +30,7 @@ std::array<int64_t, Size> genDataInt64()
 }
 
 template<typename Container, size_t Size, bool Str>
-bool pushBackArr(Container container_)
+bool pushBackArr(Container& container_)
 {
     if constexpr (Str == true)
     {
@@ -68,7 +68,7 @@ bool insertMap(Container& container_)
 }
 
 
-static void int64_1000_vector_push_back(benchmark::State& state) 
+static void insert_int64_1000_vector_push_back(benchmark::State& state) 
 {
     for (auto _ : state)
     {
@@ -77,10 +77,10 @@ static void int64_1000_vector_push_back(benchmark::State& state)
         benchmark::DoNotOptimize(pushBackArr<std::vector<int64_t>, 1000, false>(vec));
     }
 }
-BENCHMARK(int64_1000_vector_push_back);
+BENCHMARK(insert_int64_1000_vector_push_back);
 
 
-static void int64_1000_unordered_set_insert(benchmark::State& state) 
+static void insert_int64_1000_unordered_set(benchmark::State& state) 
 {
     for (auto _ : state)
     {
@@ -89,9 +89,9 @@ static void int64_1000_unordered_set_insert(benchmark::State& state)
         benchmark::DoNotOptimize(insertMap<std::unordered_set<int64_t>, 1000, false>(set));
     }
 }
-BENCHMARK(int64_1000_unordered_set_insert);
+BENCHMARK(insert_int64_1000_unordered_set);
 
-static void int64_1000_sg14_slotMap_insert(benchmark::State& state) 
+static void insert_int64_1000_sg14_slotMap(benchmark::State& state) 
 {
     for (auto _ : state)
     {
@@ -100,12 +100,11 @@ static void int64_1000_sg14_slotMap_insert(benchmark::State& state)
         benchmark::DoNotOptimize(insertMap<stdext::slot_map<int64_t>, 1000, false>(sg14SlotMap));
     }
 }
-BENCHMARK(int64_1000_sg14_slotMap_insert);
+BENCHMARK(insert_int64_1000_sg14_slotMap);
 
 
-static void int64_1000_lockedSlotMap_insert(benchmark::State& state) 
+static void insert_int64_1000_lockedSlotMap(benchmark::State& state) 
 {
-    
     for (auto _ : state)
     {
         gby::locked_slot_map<int64_t> slotMap;
@@ -113,10 +112,10 @@ static void int64_1000_lockedSlotMap_insert(benchmark::State& state)
         benchmark::DoNotOptimize(insertMap<gby::locked_slot_map<int64_t>, 1000, false>(slotMap));
     }
 }
-BENCHMARK(int64_1000_lockedSlotMap_insert);
+BENCHMARK(insert_int64_1000_lockedSlotMap);
 
 
-static void int64_1000_optimizedLockedSlotMap_insert(benchmark::State& state) 
+static void insert_int64_1000_optimizedLockedSlotMap(benchmark::State& state) 
 {
     for (auto _ : state)
     {
@@ -124,10 +123,10 @@ static void int64_1000_optimizedLockedSlotMap_insert(benchmark::State& state)
         benchmark::DoNotOptimize(insertMap<gby::optimized_locked_slot_map<int64_t, 1000>, 1000, false>(optimizedSlotMap));
     }
 }
-BENCHMARK(int64_1000_optimizedLockedSlotMap_insert);
+BENCHMARK(insert_int64_1000_optimizedLockedSlotMap);
 
 
-static void string_1000_vector_push_back(benchmark::State& state) 
+static void insert_string_1000_vector_push_back(benchmark::State& state) 
 {
     for (auto _ : state)
     {
@@ -136,10 +135,10 @@ static void string_1000_vector_push_back(benchmark::State& state)
         benchmark::DoNotOptimize(pushBackArr<std::vector<std::string>, 1000, true>(vec));
     }
 }
-BENCHMARK(string_1000_vector_push_back);
+BENCHMARK(insert_string_1000_vector_push_back);
 
 
-static void string_1000_unordered_set_insert(benchmark::State& state) 
+static void insert_string_1000_unordered_set(benchmark::State& state) 
 {
     for (auto _ : state)
     {
@@ -148,10 +147,10 @@ static void string_1000_unordered_set_insert(benchmark::State& state)
         benchmark::DoNotOptimize(insertMap<std::unordered_set<std::string>, 1000, true>(set));
     }
 }
-BENCHMARK(string_1000_unordered_set_insert);
+BENCHMARK(insert_string_1000_unordered_set);
 
 
-static void string_1000_sg14SlotMap_insert(benchmark::State& state) 
+static void insert_string_1000_sg14SlotMap(benchmark::State& state) 
 {
     for (auto _ : state)
     {
@@ -160,10 +159,10 @@ static void string_1000_sg14SlotMap_insert(benchmark::State& state)
         benchmark::DoNotOptimize(insertMap<stdext::slot_map<std::string>, 1000, true>(sg14SlotMap));
     }
 }
-BENCHMARK(string_1000_sg14SlotMap_insert);
+BENCHMARK(insert_string_1000_sg14SlotMap);
 
 
-static void string_1000_lockedSlotMap_insert(benchmark::State& state) 
+static void insert_string_1000_lockedSlotMap(benchmark::State& state) 
 {
     for (auto _ : state)
     {
@@ -172,10 +171,10 @@ static void string_1000_lockedSlotMap_insert(benchmark::State& state)
         benchmark::DoNotOptimize(insertMap<gby::locked_slot_map<std::string>, 1000, true>(slotMap));
     }
 }
-BENCHMARK(string_1000_lockedSlotMap_insert);
+BENCHMARK(insert_string_1000_lockedSlotMap);
 
 
-static void string_1000_optimizedLockedSlotMap_insert(benchmark::State& state) 
+static void insert_string_1000_optimizedLockedSlotMap(benchmark::State& state) 
 {
     for (auto _ : state)
     {
@@ -183,4 +182,4 @@ static void string_1000_optimizedLockedSlotMap_insert(benchmark::State& state)
         benchmark::DoNotOptimize(insertMap<gby::optimized_locked_slot_map<std::string, 1000>, 1000, true>(optimizedSlotMap));
     }
 }
-BENCHMARK(string_1000_optimizedLockedSlotMap_insert);
+BENCHMARK(insert_string_1000_optimizedLockedSlotMap);

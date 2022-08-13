@@ -1,6 +1,8 @@
 
 #pragma once
 
+#include "utils.h"
+
 #include <utility>
 #include <vector>
 #include <deque>
@@ -59,12 +61,13 @@ public:
     {
         _next_available_slot_index.store(0); // first element of slot container
          
-        for (key_index_type slot_idx {}; slot_idx < _slots.size(); ++slot_idx)
+        for (slot_index_type slot_idx {}; slot_idx < Size; ++slot_idx)
         {
             _slots[slot_idx] = std::make_pair(slot_idx+1, key_generation_type{});
         }
         
-        _sentinel_last_slot_index.store(_slots.size());
+        _slots[Size] = std::make_pair(Size, key_generation_type{});
+        _sentinel_last_slot_index.store(Size);
     }
 
     constexpr key_type insert(const T& value)   { return this->emplace(value);            }
@@ -73,22 +76,12 @@ public:
     template<class ... Args> 
     constexpr key_type emplace(Args&& ... args) 
     {
-        /*
-        if slots or values array is full, return error/exception/etc
-
-        increment values size atomically
-        emplace element into value spot
-        insert into slots array the new value slot
-            - CAS on next_available_slot_index, whether it has changed, and if not switch it with the next in line.
-            - edit new slot object
-            - increment slots size
-        */
         slot_index_type cur_slot_idx {};
         do 
         {
             cur_slot_idx = _next_available_slot_index.load(std::memory_order_acquire);
 
-            if (cur_slot_idx == _sentinel_last_slot_index.load(std::memory_order_acquire))
+            if (unlikely(cur_slot_idx == _sentinel_last_slot_index.load(std::memory_order_acquire)))
                 throw std::length_error("Slot Map is at max capacity.");
         }
         while (!_next_available_slot_index.compare_exchange_strong(cur_slot_idx, get_index<slot_type>(_slots[cur_slot_idx]))); 
@@ -112,7 +105,7 @@ public:
                 if (get_index(_slots[_reverse_array[conservSize]]) != conservSize)
                     break;
             }
-            while (conservSize < Size && _conservative_size.compare_exchange_strong(conservSize, conservSize+1));
+            while (conservSize < _size.load(std::memory_order_acquire) && _conservative_size.compare_exchange_strong(conservSize, conservSize+1));
         }        
         
         return {cur_slot_idx, get_generation(*cur_slot).load(std::memory_order_acquire)};       
@@ -121,10 +114,14 @@ public:
     // this is non blocking. if another thread is currently iterating,
     // add to erase queue and return. 
     template<bool Block=false>
-    constexpr void erase(const key_type& key) 
+    constexpr bool erase(const key_type& key) 
     {
         if (addToEraseQueue(key))
+        {
             drainEraseQueue<Block>();                
+            return true;
+        }
+        return false;
     }
 
     // due to the iterationLock, size can only increase inside this method
@@ -226,7 +223,7 @@ public:
         }
     }  
 
-private:
+public:
     constexpr bool validate_and_increment_slot(const key_type &key) noexcept
     {
         try
@@ -290,19 +287,9 @@ private:
         return false;
     }
 
-    // should only ever be called by drainEraseQueue - don't call this
-    // directly.
+    // should only ever be called by drainEraseQueue - don't call this directly.
     void drainEraseQueueImpl()
     {
-        /*
-            get size of array queue
-            go one by one:
-                - validate key
-                - increment generator
-                - copy end of values to current value
-                - switch end-of-values slot to this index & decrement values size
-                - add current slot to free slots list
-        */
         size_t cur_erase_array_length {};
         size_t erase_idx {};
         do 
@@ -350,7 +337,7 @@ private:
     
     // stack used to store elements to be deleted. This is only used if trying
     // to delete while iterating- otherwise the elemnt gets deleted on the spot
-    std::vector<key_index_type> _erase_array = std::vector<key_index_type>(Size);
+    std::vector<slot_index_type> _erase_array = std::vector<slot_index_type>(Size);
     std::atomic<size_t>  _erase_array_length;
     std::atomic<size_t>  _conservative_erase_array_length;
 
