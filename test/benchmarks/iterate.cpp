@@ -1,6 +1,7 @@
 
 #include "locked_slot_map.h"
 #include "optimized_locked_slot_map.h"
+#include "dynamic_slot_map.h"
 
 #include <benchmark/benchmark.h>
 
@@ -177,6 +178,18 @@ static void iterate_int64_1000_optimizedLockedSlotMap(benchmark::State& state)
 BENCHMARK(iterate_int64_1000_optimizedLockedSlotMap);
 
 
+static void iterate_int64_1000_dynamicSlotMap(benchmark::State& state) 
+{
+    gby::dynamic_slot_map<int64_t> dynamicSlotMap (1000);
+    insertMap<gby::dynamic_slot_map<int64_t>, 1000, false>(dynamicSlotMap);
+    for (auto _ : state)
+    {
+        benchmark::DoNotOptimize(iterateMap<gby::dynamic_slot_map<int64_t>, std::function<void (int64_t)>>(dynamicSlotMap, pretendFnc<int64_t>));
+    }
+}
+BENCHMARK(iterate_int64_1000_dynamicSlotMap);
+
+
 static void iterate_string_1000_vector_idx(benchmark::State& state) 
 {
     std::vector<std::string> vec;
@@ -254,3 +267,15 @@ static void iterate_string_1000_optimizedLockedSlotMap(benchmark::State& state)
     }
 }
 BENCHMARK(iterate_string_1000_optimizedLockedSlotMap);
+
+
+static void iterate_string_1000_dynamicSlotMap(benchmark::State& state) 
+{
+    gby::dynamic_slot_map<std::string> dynamicSlotMap (1000);
+    insertMap<gby::dynamic_slot_map<std::string>, 1000, true>(dynamicSlotMap);
+    for (auto _ : state)
+    {
+        benchmark::DoNotOptimize(iterateMap<gby::dynamic_slot_map<std::string>, std::function<void (std::string)>>(dynamicSlotMap, pretendFnc<std::string>));
+    }
+}
+BENCHMARK(iterate_string_1000_dynamicSlotMap);

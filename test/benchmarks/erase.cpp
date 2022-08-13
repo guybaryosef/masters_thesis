@@ -1,6 +1,7 @@
 
 #include "locked_slot_map.h"
 #include "optimized_locked_slot_map.h"
+#include "dynamic_slot_map.h"
 
 #include <benchmark/benchmark.h>
 
@@ -199,6 +200,28 @@ static void erase_int64_1000_optimizedLockedSlotMap_insertAndErase(benchmark::St
 BENCHMARK(erase_int64_1000_optimizedLockedSlotMap_insertAndErase);
 
 
+static void erase_int64_1000_dynamicSlotMap_insertOnly(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        gby::dynamic_slot_map<int64_t> dynamicSlotMap(1000);
+        benchmark::DoNotOptimize(insertSlotMap<gby::dynamic_slot_map<int64_t>, std::vector<gby::dynamic_slot_map<int64_t>::key_type>, 1000, false>(dynamicSlotMap));
+    }
+}
+BENCHMARK(erase_int64_1000_dynamicSlotMap_insertOnly);
+
+
+static void erase_string_1000_dynamicSlotMap_insertAndErase(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        gby::dynamic_slot_map<int64_t> dynamicSlotMap(1000);
+        auto vec = insertSlotMap<gby::dynamic_slot_map<int64_t>, std::vector<gby::dynamic_slot_map<int64_t>::key_type>, 1000, false>(dynamicSlotMap);
+        eraseSlotMap(dynamicSlotMap, vec);
+    }
+}
+BENCHMARK(erase_string_1000_dynamicSlotMap_insertAndErase);
+
 static void erase_string_1000_vector_idx(benchmark::State& state) 
 {
 
@@ -284,4 +307,27 @@ static void erase_string_1000_optimizedLockedSlotMap_insertAndErase(benchmark::S
     }
 }
 BENCHMARK(erase_string_1000_optimizedLockedSlotMap_insertAndErase);
+
+
+static void erase_string_1000_dynamicSlotMap_insertOnly(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        gby::dynamic_slot_map<std::string> dynamicSlotMap(1000);
+        benchmark::DoNotOptimize(insertSlotMap<gby::dynamic_slot_map<std::string>, std::vector<gby::dynamic_slot_map<std::string>::key_type>, 1000, true>(dynamicSlotMap));
+    }
+}
+BENCHMARK(erase_string_1000_dynamicSlotMap_insertOnly);
+
+
+static void erase_string_1000_dynamicSlotMap_insertAndErase(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        gby::dynamic_slot_map<std::string> dynamicSlotMap(1000);
+        auto vec = insertSlotMap<gby::dynamic_slot_map<std::string>, std::vector<gby::dynamic_slot_map<std::string>::key_type>, 1000, true>(dynamicSlotMap);
+        eraseSlotMap(dynamicSlotMap, vec);
+    }
+}
+BENCHMARK(erase_string_1000_dynamicSlotMap_insertAndErase);
 

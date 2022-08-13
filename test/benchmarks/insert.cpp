@@ -1,6 +1,7 @@
 
 #include "locked_slot_map.h"
 #include "optimized_locked_slot_map.h"
+#include "dynamic_slot_map.h"
 
 #include <benchmark/benchmark.h>
 
@@ -126,6 +127,17 @@ static void insert_int64_1000_optimizedLockedSlotMap(benchmark::State& state)
 BENCHMARK(insert_int64_1000_optimizedLockedSlotMap);
 
 
+static void insert_int64_1000_dynamicSlotMap(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        gby::dynamic_slot_map<int64_t> dynamicSlotMap(1000);
+        benchmark::DoNotOptimize(insertMap<gby::dynamic_slot_map<int64_t>, 1000, false>(dynamicSlotMap));
+    }
+}
+BENCHMARK(insert_int64_1000_dynamicSlotMap);
+
+
 static void insert_string_1000_vector_push_back(benchmark::State& state) 
 {
     for (auto _ : state)
@@ -183,3 +195,14 @@ static void insert_string_1000_optimizedLockedSlotMap(benchmark::State& state)
     }
 }
 BENCHMARK(insert_string_1000_optimizedLockedSlotMap);
+
+
+static void insert_string_1000_dynamicSlotMap(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        gby::dynamic_slot_map<std::string> dynamicSlotMap(1000);
+        benchmark::DoNotOptimize(insertMap<gby::dynamic_slot_map<std::string>, 1000, true>(dynamicSlotMap));
+    }
+}
+BENCHMARK(insert_string_1000_dynamicSlotMap);
