@@ -104,32 +104,33 @@ public:
 
     constexpr const size_type push_back(const value_type& val_)
     {
-        const size_type index = _size.fetch_add(1);
+        const size_type index = _size.fetch_add(1, std::memory_order_acq_rel);
         const auto [bucket, b_idx] = get_location(index);
         if (_bucketArr[bucket].first == 0)
             allocate_bucket(bucket);
         
         if constexpr (is_atomic<value_type>)
         {
-            _bucketArr[bucket].second.load()[b_idx].store(val_.load(std::memory_order_relaxed), 
-                                                        std::memory_order_relaxed); 
+            _bucketArr[bucket].second.load(std::memory_order_acquire)[b_idx].store(val_.load(std::memory_order_acquire), 
+                                                                                   std::memory_order_release); 
         }        
         else if constexpr (is_pair_atomic<value_type>)
         {
             if constexpr(is_pair_first_atomic<value_type>)
-                _bucketArr[bucket].second.load()[b_idx].first.store(val_.first.load(std::memory_order_relaxed), 
-                                                                     std::memory_order_relaxed);            else
-                _bucketArr[bucket].second.load()[b_idx].first = val_.first;
+                _bucketArr[bucket].second.load(std::memory_order_acquire)[b_idx].first.store(val_.first.load(std::memory_order_acquire), 
+                                                                                            std::memory_order_release);            
+            else
+                _bucketArr[bucket].second.load(std::memory_order_acquire)[b_idx].first = val_.first;
             
             if constexpr(is_pair_second_atomic<value_type>)
-                _bucketArr[bucket].second.load()[b_idx].second.store(val_.second.load(std::memory_order_relaxed), 
-                                                                     std::memory_order_relaxed);
+                _bucketArr[bucket].second.load(std::memory_order_acquire)[b_idx].second.store(val_.second.load(std::memory_order_acquire), 
+                                                                                              std::memory_order_release);
             else
-                _bucketArr[bucket].second.load()[b_idx].second = val_.second;
+                _bucketArr[bucket].second.load(std::memory_order_acquire)[b_idx].second = val_.second;
         }
         else
         {
-            _bucketArr[bucket].second.load()[b_idx] = val_; 
+            _bucketArr[bucket].second.load(std::memory_order_acquire)[b_idx] = val_; 
         }
 
         return index;        
@@ -161,7 +162,7 @@ public:
         size_type  cur_size {};
         do
         {
-            cur_size = _size.load(std::memory_order_relaxed);
+            cur_size = _size.load(std::memory_order_acquire);
             if (unlikely(cur_size == 0))
             {
                 throw std::out_of_range("internal vector is empty!");
@@ -213,7 +214,7 @@ private:
             throw std::out_of_range("index " + std::to_string(i_) + " outside of size " + std::to_string(size()) + ".");
         }
         auto [bucket, idx] = get_location(i_); 
-        T*   arr           = _bucketArr[bucket].second.load(); 
+        T*   arr           = _bucketArr[bucket].second.load(std::memory_order_acquire); 
         return arr[idx];
     }
 
