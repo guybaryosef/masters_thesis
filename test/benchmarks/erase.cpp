@@ -211,7 +211,7 @@ static void erase_int64_1000_dynamicSlotMap_insertOnly(benchmark::State& state)
 BENCHMARK(erase_int64_1000_dynamicSlotMap_insertOnly);
 
 
-static void erase_string_1000_dynamicSlotMap_insertAndErase(benchmark::State& state) 
+static void erase_int64_1000_dynamicSlotMap_insertAndErase(benchmark::State& state) 
 {
     for (auto _ : state)
     {
@@ -220,7 +220,8 @@ static void erase_string_1000_dynamicSlotMap_insertAndErase(benchmark::State& st
         eraseSlotMap(dynamicSlotMap, vec);
     }
 }
-BENCHMARK(erase_string_1000_dynamicSlotMap_insertAndErase);
+BENCHMARK(erase_int64_1000_dynamicSlotMap_insertAndErase);
+
 
 static void erase_string_1000_vector_idx(benchmark::State& state) 
 {
@@ -330,4 +331,3 @@ static void erase_string_1000_dynamicSlotMap_insertAndErase(benchmark::State& st
     }
 }
 BENCHMARK(erase_string_1000_dynamicSlotMap_insertAndErase);
-

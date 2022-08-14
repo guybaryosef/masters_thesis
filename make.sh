@@ -15,9 +15,8 @@ then
 fi
 
 # create build directory
-[ ! -d build ] && mkdir build
-
-[ ! -d build/$1 ] && mkdir build/$1
+mkdir -p build
+mkdir -p build/$1
 
 pushd build/$1 > /dev/null
 

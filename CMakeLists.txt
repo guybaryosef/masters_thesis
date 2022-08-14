@@ -24,11 +24,12 @@ if (MSVC)
 endif()
 set(BENCHMARK_ENABLE_TESTING off)    # to suppress benchmark internal tests
 FetchContent_Declare(googletest
-    URL https://github.com/google/googletest/archive/a3460d1aeeaa43fdf137a6adefef10ba0b59fe4b.zip
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG        a3460d1aeeaa43fdf137a6adefef10ba0b59fe4b 
 )
 FetchContent_Declare(googlebenchmark
     GIT_REPOSITORY https://github.com/google/benchmark.git
-    GIT_TAG master
+    GIT_TAG        master
 )
 
 FetchContent_MakeAvailable(googletest
