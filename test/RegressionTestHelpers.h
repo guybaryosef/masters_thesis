@@ -206,14 +206,16 @@ void test_MCMP(T& map, U genKeyFunctor)
     EXPECT_TRUE(map.empty());
 
     std::vector<std::vector<typename T::key_type>> vecOfKeys{};
+    vecOfKeys.reserve(WriterCount);
 
     std::vector<std::future<std::pair<std::chrono::microseconds, size_t>>> writers{};
+    writers.reserve(WriterCount);
     for (size_t i {}; i < WriterCount; ++i)
     {
         vecOfKeys.emplace_back();
         vecOfKeys.back().reserve(WriteCountPerWriter);
 
-        writers.push_back(std::async(std::launch::async, 
+        writers.emplace_back(std::async(std::launch::async,
                                 writerFnc<WriteCountPerWriter, std::vector<typename T::key_type>, T, U>, 
                                 std::ref(vecOfKeys.back()), std::ref(map), genKeyFunctor));
     }
@@ -221,12 +223,18 @@ void test_MCMP(T& map, U genKeyFunctor)
     bool readFlag{true};
 
     std::vector<std::future<std::pair<std::chrono::microseconds, size_t>>> erasers{};
-    for (size_t i {}; i < std::min(EraserCount, WriterCount); ++i)
-        erasers.emplace_back(std::async(std::launch::async, 
-                                        eraserFnc<std::vector<typename T::key_type>, T, U>, 
-                                        std::ref(vecOfKeys[i]), std::ref(map), std::ref(readFlag)) );
+    auto eraseCount = std::min(EraserCount, WriterCount);
+    if (eraseCount > 0)
+    {
+        erasers.reserve(eraseCount);
+        for (size_t i {}; i < eraseCount; ++i)
+            erasers.emplace_back(std::async(std::launch::async,
+                                            eraserFnc<std::vector<typename T::key_type>, T, U>,
+                                            std::ref(vecOfKeys[i]), std::ref(map), std::ref(readFlag)) );
+    }
 
     std::vector<std::future<std::tuple<std::chrono::microseconds, size_t, size_t>>> readers{};
+    readers.reserve(ReaderCount);
     for (size_t i {}; i < ReaderCount; ++i)
         readers.emplace_back(std::async(std::launch::async, 
                                         readerFnc<std::vector<typename T::key_type>, T>, 
@@ -267,19 +275,19 @@ void test_MCMP(T& map, U genKeyFunctor)
               << "     - concurrent writers count: " << WriterCount               << "\n"
               << "     - total elements written: "   << totalWrites               << "\n"
               << "     - time (in microseconds): "   << totalWriteInMicros.count()
-                                                     << " averaging " + std::to_string(totalWriteInMicros.count()/totalWrites) 
-                                                     << " micros per write."      << "\n"
+                                     << " averaging "<< (totalWrites == 0 ? 0 : totalWriteInMicros.count()/totalWrites)
+                                     << " micros per write."      << "\n"
               << "Erasers:"                                                       << "\n"
               << "     - concurrent erasers count: " << WriterCount               << "\n"
               << "     - total elements erased: "    << totalErases               << "\n"
               << "     - time (in microseconds): "   << totalEraserTimeInMicros.count()
-                                                     << " averaging " + std::to_string(totalEraserTimeInMicros.count()/totalErases) 
-                                                     << " micros per write."      << "\n"
+                                     << " averaging "<< (totalErases == 0 ? 0 : totalEraserTimeInMicros.count()/totalErases)
+                                     << " micros per write."      << "\n"
               << "Readers:"                                                       << "\n"
               << "     - concurrent readers count: " << ReaderCount               << "\n"
               << "     - Total elements read: "      << totalReads                << "\n"
               << "     - time (in microseconds): "   << totalReaderTimeInMicros.count()
-                                                     << " averaging " << totalReaderTimeInMicros.count()/totalReads
-                                                     << " micros per read."       << "\n" 
+                                     << " averaging "<< (totalReads == 0 ? 0 : totalReaderTimeInMicros.count()/totalReads)
+                                     << " micros per read."       << "\n"
               << std::endl;
 }
