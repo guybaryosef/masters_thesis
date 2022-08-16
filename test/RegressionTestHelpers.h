@@ -12,7 +12,7 @@
 
 constexpr size_t maxStrLen {50};
 
-extern char alphaNum2[63];
+extern char alphaNum[63];
 
 struct TestObj
 {
@@ -40,9 +40,9 @@ auto genTestObj()
             std::string s{};
             s.reserve(len);
             for (int i = 0; i < len; ++i)
-                s += alphaNum2[rand() % sizeof(alphaNum2)];
+                s += alphaNum[rand() % sizeof(alphaNum)];
             
-            return TestObj{rand(), alphaNum2[rand() % sizeof(alphaNum2)], s};
+            return TestObj{rand(), alphaNum[rand() % sizeof(alphaNum)], s};
         };
     std::generate_n(testObjInput.begin(), T, genTestObj);
     return testObjInput;
@@ -60,7 +60,7 @@ auto genStrInput()
             std::string s{};
             s.reserve(len);
             for (int i = 0; i < len; ++i)
-                s += alphaNum2[rand() % sizeof(alphaNum2)];
+                s += alphaNum[rand() % sizeof(alphaNum)];
             return s;
         };
     std::generate_n(strInput.begin(), T, genStr);
@@ -69,20 +69,27 @@ auto genStrInput()
 
 // returns pair<TimeInFunction, numberOfElementsErased>
 template <size_t writeCount, typename T, typename U, typename Z>
-std::pair<std::chrono::microseconds, size_t> writerEraserFnc(T &keys, U &map, Z genFunc)
+std::pair<std::chrono::microseconds, size_t> writerEraserFnc(T &keys, std::atomic<size_t>& keysCount, U &map, Z genFunc)
 {
     long erasedCount {};
     auto timeStart = std::chrono::high_resolution_clock::now();
     for(size_t count{}; count < writeCount; ++count)    
     {
         keys.emplace_back(map.insert(genFunc()));
+        keysCount.fetch_add(1);
 
         if (auto chanceToDelete = rand() % 10; chanceToDelete == 1)
         {
-            auto key_it {keys.begin() + (rand() % keys.size())};
-            map.erase(*key_it);
-            keys.erase(key_it);
-            erasedCount++;
+            auto sz = keysCount.load();
+            if (sz > 0)
+            {
+                auto key_it = keys.begin();
+                std::advance(key_it, rand() % sz);
+                map.erase(*key_it);
+                keysCount.fetch_sub(1);
+                keys.erase(key_it);
+                erasedCount++;
+            }
         }
     }
     auto timeEnd = std::chrono::high_resolution_clock::now();
@@ -90,19 +97,22 @@ std::pair<std::chrono::microseconds, size_t> writerEraserFnc(T &keys, U &map, Z 
 }
 
 template <size_t writeCount, typename T, typename U, typename Z>
-std::pair<std::chrono::microseconds, size_t> writerFnc (T &keys, U &map, Z genFunc)
+std::pair<std::chrono::microseconds, size_t> writerFnc (T &keys, std::atomic<size_t>& keysCount, U &map, Z genFunc)
 {
     auto timeStart = std::chrono::high_resolution_clock::now();
     long count {};
-    while(count++ < writeCount)    
+    while(count++ < writeCount)
+    {
         keys.push_back(map.insert(genFunc()));
+        keysCount.fetch_add(1);
+    }
     auto timeEnd = std::chrono::high_resolution_clock::now();
     
     return {std::chrono::duration_cast<std::chrono::microseconds>(timeEnd-timeStart), 0};
 }
 
 template <typename T, typename U, typename Z>
-std::pair<std::chrono::microseconds, size_t> eraserFnc (T &keys, U &map, bool &readFlag)
+std::pair<std::chrono::microseconds, size_t> eraserFnc (T &keys, std::atomic<size_t>& keySize, U &map, std::atomic<bool> &readFlag)
 {
     long count {};
 
@@ -110,8 +120,13 @@ std::pair<std::chrono::microseconds, size_t> eraserFnc (T &keys, U &map, bool &r
     while(readFlag)
     {
         sleep(0.01);
-        size_t key_idx {rand()%keys.size()};
-        map.erase(keys[key_idx]);
+        auto sz = keySize.load();
+        if (sz > 0)
+        {
+            size_t key_idx {rand()%sz};
+            keySize.fetch_sub(1);
+            map.erase(keys[key_idx]);
+        }
     }
     auto timeEnd = std::chrono::high_resolution_clock::now();
     
@@ -120,7 +135,7 @@ std::pair<std::chrono::microseconds, size_t> eraserFnc (T &keys, U &map, bool &r
 }
 
 template<typename T, typename U>
-std::tuple<std::chrono::microseconds, size_t, size_t> readerFnc(const T &keys, const U &map, bool &readFlag) 
+std::tuple<std::chrono::microseconds, size_t, size_t> readerFnc(const T &keys, const U &map, std::atomic<bool> &readFlag)
 {
     size_t readCount {};
     size_t errorCount {};
@@ -155,13 +170,14 @@ void test_SCMP(T& map, U genKeyFunctor, const bool enableErase)
 
     std::vector<typename T::key_type> keys{};
     keys.reserve(WriteCount);
+    std::atomic<size_t> keysCount{};
 
     auto writer_fut = std::async(std::launch::async,
                                  (enableErase) ? writerEraserFnc<WriteCount, decltype(keys), T, U> 
                                                : writerFnc<WriteCount, decltype(keys), T, U>, 
-                                 std::ref(keys), std::ref(map), genKeyFunctor);
+                                 std::ref(keys), std::ref(keysCount), std::ref(map), genKeyFunctor);
 
-    bool readFlag{true};
+    std::atomic<bool> readFlag{true};
     std::vector<std::future<std::tuple<std::chrono::microseconds, size_t, size_t>>> readers{};
     for (size_t i {}; i < ReaderCount; ++i)
         readers.push_back(std::async(std::launch::async, 
@@ -188,8 +204,8 @@ void test_SCMP(T& map, U genKeyFunctor, const bool enableErase)
               << "     - total elements written: " << WriteCount                  << "\n"
               << "     - total elements erased: "  << erasedCount                 << "\n"
               << "     - time (in microseconds): " << writingTimeInMicros.count()
-              << ((erasedCount == 0) ? (" averaging " + std::to_string(writingTimeInMicros.count()/WriteCount) + " micros per write.\n")
-                                    : ("\n"))
+                                            << " averaging " << (WriteCount == 0 ? 0 : writingTimeInMicros.count()/WriteCount)
+                                            << " micros per write.\n"
               << "Readers:"                                                       << "\n"
               << "     - concurrent readers count: " << ReaderCount               << "\n"
               << "     - Total elements read: "      << totalReads                << "\n"
@@ -208,29 +224,34 @@ void test_MCMP(T& map, U genKeyFunctor)
     std::vector<std::vector<typename T::key_type>> vecOfKeys{};
     vecOfKeys.reserve(WriterCount);
 
+    std::vector<std::atomic<size_t>> vecOfkeysLen(WriterCount);
+
     std::vector<std::future<std::pair<std::chrono::microseconds, size_t>>> writers{};
     writers.reserve(WriterCount);
     for (size_t i {}; i < WriterCount; ++i)
     {
+        auto& atomicSize = vecOfkeysLen[i];
+
         vecOfKeys.emplace_back();
-        vecOfKeys.back().reserve(WriteCountPerWriter);
+        auto& keyVec = vecOfKeys.back();
+        keyVec.reserve(WriteCountPerWriter);
 
         writers.emplace_back(std::async(std::launch::async,
                                 writerFnc<WriteCountPerWriter, std::vector<typename T::key_type>, T, U>, 
-                                std::ref(vecOfKeys.back()), std::ref(map), genKeyFunctor));
+                                std::ref(keyVec), std::ref(atomicSize), std::ref(map), genKeyFunctor));
     }
 
-    bool readFlag{true};
+    std::atomic<bool> readFlag{true};
 
     std::vector<std::future<std::pair<std::chrono::microseconds, size_t>>> erasers{};
     auto eraseCount = std::min(EraserCount, WriterCount);
     if (eraseCount > 0)
     {
         erasers.reserve(eraseCount);
-        for (size_t i {}; i < eraseCount; ++i)
+        for (size_t i=0; i < eraseCount; ++i)
             erasers.emplace_back(std::async(std::launch::async,
                                             eraserFnc<std::vector<typename T::key_type>, T, U>,
-                                            std::ref(vecOfKeys[i]), std::ref(map), std::ref(readFlag)) );
+                                            std::ref(vecOfKeys[i]), std::ref(vecOfkeysLen[i]), std::ref(map), std::ref(readFlag)) );
     }
 
     std::vector<std::future<std::tuple<std::chrono::microseconds, size_t, size_t>>> readers{};
@@ -242,11 +263,6 @@ void test_MCMP(T& map, U genKeyFunctor)
 
     std::chrono::microseconds totalWriteInMicros {};
     size_t totalWrites {WriterCount*WriteCountPerWriter};
-    // for (auto& writer : writers)
-    // {
-    //     auto [writerInMicros, a] = writer.get();
-    //     totalWriteInMicros += writerInMicros;
-    // }
 
     readFlag = false;
 

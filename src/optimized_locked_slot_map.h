@@ -54,10 +54,9 @@ public:
     static constexpr size_t null_key_index = std::numeric_limits<key_index_type>::max();
 
     optimized_locked_slot_map() 
-            : _conservative_erase_array_length {}
-            , _erase_array_length {}
-            , _conservative_size {}
-            , _size {}
+            : _erase_array_length {0}
+            , _conservative_size {0}
+            , _size {0}
     {
         _next_available_slot_index.store(0); // first element of slot container
          
@@ -279,9 +278,15 @@ public:
     {
         if (validate_and_increment_slot(key))
         {
-            size_t index = _erase_array_length.fetch_add(1, std::memory_order_acq_rel);
-            _erase_array[index] = get_index(key);
-            _conservative_erase_array_length.store(index+1, std::memory_order_release);
+            size_t idx {};
+            do
+            {
+                idx = _erase_array_length.load(std::memory_order_acquire);
+                _erase_array[idx] = get_index(key);
+            }
+            while (!_erase_array_length.compare_exchange_strong(idx, idx+1));
+            _erase_array[idx] = get_index(key);
+
             return true;
         }
         return false;
@@ -290,13 +295,16 @@ public:
     // should only ever be called by drainEraseQueue - don't call this directly.
     void drainEraseQueueImpl()
     {
+        if (_erase_array_length.load(std::memory_order_acquire) == 0)
+            return;
+
         size_t cur_erase_array_length {};
         size_t erase_idx {};
-        do 
+        do
         {
-            cur_erase_array_length = _conservative_erase_array_length.load(std::memory_order_acquire);
+            cur_erase_array_length = _erase_array_length.load(std::memory_order_acquire);
 
-            for ( ; erase_idx < cur_erase_array_length; ++erase_idx) 
+            for ( ; erase_idx < cur_erase_array_length; ++erase_idx)
             {
                 const size_t slot_to_erase_idx = _erase_array[erase_idx];
                 slot_type &slot_to_erase = _slots[slot_to_erase_idx];
@@ -322,7 +330,6 @@ public:
             }
         }
         while (!_erase_array_length.compare_exchange_strong(cur_erase_array_length, 0));
-    
         assert(cur_erase_array_length == erase_idx);
     }
 
@@ -339,7 +346,6 @@ public:
     // to delete while iterating- otherwise the elemnt gets deleted on the spot
     std::vector<slot_index_type> _erase_array = std::vector<slot_index_type>(Size);
     std::atomic<size_t>  _erase_array_length;
-    std::atomic<size_t>  _conservative_erase_array_length;
 
 
     // number of elements in the values container. Unless caught in the middle 

@@ -15,7 +15,7 @@ char alphanum[] = "0123456789"
                   "abcdefghijklmnopqrstuvwxyz";
 
     
- TEST(LockedSlotMapRegression, IntElement)
+ TEST(LockedSlotMap, IntElement)
  {
      gby::locked_slot_map<int> map;
      map.reserve(iterationCount);
@@ -26,9 +26,9 @@ char alphanum[] = "0123456789"
      test_SCMP<iterationCount, 3>(map2, []() { return rand();}, true);
  }
 
- TEST(LockedSlotMapRegression, StringElement)
+ TEST(LockedSlotMap, StringElement)
  {
-     constexpr size_t strCount {iterationCount};
+     constexpr size_t strCount {25};
      std::array<std::string, strCount> strInput {};
 
      auto genStr = []
@@ -52,9 +52,9 @@ char alphanum[] = "0123456789"
      test_SCMP<strCount, 3>(map2, [&strInput]() { return strInput[rand()%strCount];}, true);
  }
 
- TEST(LockedSlotMapRegression, TestObjElement)
+ TEST(LockedSlotMap, TestObjElement)
  {
-     constexpr size_t testObjCount {iterationCount};
+     constexpr size_t testObjCount {25};
      std::array<TestObj, testObjCount> testObjInput {};
 
      auto genTestObj = []
@@ -83,16 +83,16 @@ char alphanum[] = "0123456789"
 constexpr size_t WriterCount {2};
 constexpr size_t MCMP_writesPerWriter {iterationCount/WriterCount};
 
-TEST(LockedSlotMapRegression, MCMPIntElement)
+TEST(LockedSlotMap, MCMPIntElement)
 {
     gby::locked_slot_map<int> map;
     map.reserve(iterationCount);
     test_MCMP<WriterCount, MCMP_writesPerWriter, 2, 3>(map, [] { return rand();});
 }
 
- TEST(LockedSlotMapRegression, MCMPStringElement)
+ TEST(LockedSlotMap, MCMPStringElement)
  {
-     constexpr size_t strCount {iterationCount};
+     constexpr size_t strCount {25};
      auto strInput = genStrInput<strCount>();
 
      gby::locked_slot_map<std::string> map;
@@ -100,9 +100,9 @@ TEST(LockedSlotMapRegression, MCMPIntElement)
      test_MCMP<WriterCount, MCMP_writesPerWriter, 1, 5>(map, [&strInput] { return strInput[rand()%strCount];});
  }
 
- TEST(LockedSlotMapRegression, MCMPTestObjElement)
+ TEST(LockedSlotMap, MCMPTestObjElement)
  {
-     constexpr size_t testObjCount {iterationCount};
+     constexpr size_t testObjCount {25};
      auto testObjInput = genTestObj<testObjCount>();
 
      gby::locked_slot_map<TestObj, std::pair<int32_t, uint64_t>> map;
