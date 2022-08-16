@@ -258,9 +258,13 @@ void test_MCMP(T& map, U genKeyFunctor)
     std::vector<std::future<std::tuple<std::chrono::nanoseconds, size_t, size_t>>> readers{};
     readers.reserve(ReaderCount);
     for (size_t i {}; i < ReaderCount; ++i)
-        readers.emplace_back(std::async(std::launch::async, 
-                                        readerFnc<std::vector<typename T::key_type>, T>, 
-                                        std::ref(vecOfKeys[rand()%vecOfKeys.size()]), std::ref(vecOfkeysLen[i]), std::ref(map), std::ref(readFlag)) );
+    {
+        auto idx = rand()%vecOfKeys.size();
+        readers.emplace_back(std::async(std::launch::async,
+                                        readerFnc<std::vector<typename T::key_type>, T>,
+                                        std::ref(vecOfKeys[idx]), std::ref(vecOfkeysLen[idx]), std::ref(map), std::ref(readFlag)) );
+
+    }
 
     std::chrono::nanoseconds totalWriteInNanos {};
     size_t totalWrites {WriterCount*WriteCountPerWriter};
