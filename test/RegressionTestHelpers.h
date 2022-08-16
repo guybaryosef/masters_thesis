@@ -135,7 +135,7 @@ std::pair<std::chrono::nanoseconds, size_t> eraserFnc (T &keys, std::atomic<size
 }
 
 template<typename T, typename U>
-std::tuple<std::chrono::nanoseconds, size_t, size_t> readerFnc(const T &keys, const U &map, std::atomic<bool> &readFlag)
+std::tuple<std::chrono::nanoseconds, size_t, size_t> readerFnc(const T &keys, std::atomic<size_t>& keySize, U &map, std::atomic<bool> &readFlag)
 {
     size_t readCount {};
     size_t errorCount {};
@@ -143,11 +143,12 @@ std::tuple<std::chrono::nanoseconds, size_t, size_t> readerFnc(const T &keys, co
     auto timeStart = std::chrono::high_resolution_clock::now();
     while (readFlag)
     {
-        if (!keys.empty())
+        if (keySize != 0)
         {
             try
             {
-                *map.find(keys[rand()%keys.size()]);
+                auto idx = rand() % keySize;
+                const auto& var = map.find(keys[idx]);
                 __asm("");
                 readCount++;
             }
@@ -182,7 +183,7 @@ void test_SCMP(T& map, U genKeyFunctor, const bool enableErase)
     for (size_t i {}; i < ReaderCount; ++i)
         readers.push_back(std::async(std::launch::async, 
                                      readerFnc<decltype(keys), T>, 
-                                     std::ref(keys), std::ref(map), std::ref(readFlag)) );
+                                     std::ref(keys), std::ref(keysCount), std::ref(map), std::ref(readFlag)) );
 
     auto [writingTimeInNanos, erasedCount] = writer_fut.get();
 
@@ -259,7 +260,7 @@ void test_MCMP(T& map, U genKeyFunctor)
     for (size_t i {}; i < ReaderCount; ++i)
         readers.emplace_back(std::async(std::launch::async, 
                                         readerFnc<std::vector<typename T::key_type>, T>, 
-                                        std::ref(vecOfKeys[rand()%vecOfKeys.size()]), std::ref(map), std::ref(readFlag)) );
+                                        std::ref(vecOfKeys[rand()%vecOfKeys.size()]), std::ref(vecOfkeysLen[i]), std::ref(map), std::ref(readFlag)) );
 
     std::chrono::nanoseconds totalWriteInNanos {};
     size_t totalWrites {WriterCount*WriteCountPerWriter};

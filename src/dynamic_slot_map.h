@@ -271,7 +271,7 @@ private:
         {
             const auto &[idx, gen] = key;
 
-            auto &slot = _slots[idx];
+            const auto &slot = _slots[idx];
             if (get_generation(slot).load(std::memory_order_relaxed) == gen)
                 return slot;
         }
