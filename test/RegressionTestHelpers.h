@@ -8,7 +8,8 @@
 #include <vector>
 #include <thread>
 #include <future>
-
+#include <random>
+#include <functional>
 
 constexpr size_t maxStrLen {50};
 
@@ -116,6 +117,10 @@ std::pair<std::chrono::nanoseconds, size_t> eraserFnc (T &keys, std::atomic<size
 {
     long count {};
 
+    std::uniform_int_distribution<size_t> idxDistribution(1, 9999999);
+    std::mt19937 random_number_engine; // pseudorandom number generator
+    auto idxGenerator = std::bind(idxDistribution, random_number_engine);
+
     auto timeStart = std::chrono::high_resolution_clock::now();
     while(readFlag)
     {
@@ -123,7 +128,7 @@ std::pair<std::chrono::nanoseconds, size_t> eraserFnc (T &keys, std::atomic<size
         auto sz = keySize.load();
         if (sz > 0)
         {
-            size_t key_idx {rand()%sz};
+            size_t key_idx {idxGenerator()%sz};
             keySize.fetch_sub(1);
             map.erase(keys[key_idx]);
         }
@@ -140,20 +145,35 @@ std::tuple<std::chrono::nanoseconds, size_t, size_t> readerFnc(const T &keys, st
     size_t readCount {};
     size_t errorCount {};
 
+    std::uniform_int_distribution<size_t> idxDistribution(1, 9999999);
+    std::mt19937 random_number_engine; // pseudorandom number generator
+    auto idxGenerator = std::bind(idxDistribution, random_number_engine);
+
     auto timeStart = std::chrono::high_resolution_clock::now();
     while (readFlag)
     {
         if (keySize != 0)
         {
+            size_t idx;
             try
             {
-                auto idx = rand() % keySize;
-                const auto& var = map.find(keys[idx]);
-                __asm("");
-                readCount++;
+                idx = idxGenerator() % keySize.load();
+                auto key = keys[idx];
+                try
+                {
+                    const auto& var = map.find(key);
+                    __asm("");
+                    readCount++;                    
+                }
+                catch([[maybe_unused]] std::exception& e)
+                {
+                    std::cerr << "nested exception: " << e.what() << std::endl;
+                    errorCount++;
+                }
             }
-            catch(...) 
+            catch([[maybe_unused]] std::exception& e) 
             {
+                std::cerr << "exception: " << e.what() << std::endl;
                 errorCount++;
             }
         }
@@ -165,8 +185,13 @@ std::tuple<std::chrono::nanoseconds, size_t, size_t> readerFnc(const T &keys, st
 
 
 template <size_t WriteCount, size_t ReaderCount, typename T, typename U>
-void test_SCMP(T& map, U genKeyFunctor, const bool enableErase)
+void test_SPMC(T& map, U genKeyFunctor, const bool enableErase)
 {
+    if (enableErase)
+        std::cout << "-------------   Starting Single Producer Multi Consumer test w/ Erases  -------------" << std::endl;
+    else
+        std::cout << "-------------   Starting Single Producer Multi Consumer test w/out Erases  -------------" << std::endl;
+    
     EXPECT_TRUE(map.empty());
 
     std::vector<typename T::key_type> keys{};
@@ -214,12 +239,18 @@ void test_SCMP(T& map, U genKeyFunctor, const bool enableErase)
                                     << " averaging " << totalReaderTimeInNanos.count()/totalReads
                                     << " nanos per read."                        << "\n"
             << std::endl;
+
+    if (enableErase)
+        std::cout << "-------------   Finished Single Producer Multi Consumer test w/ Erases  -------------" << std::endl;
+    else
+        std::cout << "-------------   Finished Single Producer Multi Consumer test w/out Erases  -------------" << std::endl;
 }
 
 
 template <size_t WriterCount, size_t WriteCountPerWriter, size_t EraserCount, size_t ReaderCount, typename T, typename U>
-void test_MCMP(T& map, U genKeyFunctor)
+void test_MPMC(T& map, U genKeyFunctor)
 {
+    std::cout << "-------------   Starting Multi Producer Multi Consumer test   -------------" << std::endl;
     EXPECT_TRUE(map.empty());
 
     std::vector<std::vector<typename T::key_type>> vecOfKeys{};
@@ -232,6 +263,7 @@ void test_MCMP(T& map, U genKeyFunctor)
     for (size_t i {}; i < WriterCount; ++i)
     {
         auto& atomicSize = vecOfkeysLen[i];
+        atomicSize = 0;
 
         vecOfKeys.emplace_back();
         auto& keyVec = vecOfKeys.back();
@@ -311,4 +343,6 @@ void test_MCMP(T& map, U genKeyFunctor)
                                      << " averaging "<< (totalReads == 0 ? 0 : totalReaderTimeInNanos.count()/totalReads)
                                      << " nanos per read."       << "\n"
               << std::endl;
+
+        std::cout << "-------------   Finished Multi Producer Multi Consumer test  -------------" << std::endl;
 }

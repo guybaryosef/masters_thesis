@@ -13,10 +13,10 @@ constexpr size_t iterationCount {50000};
 TEST(OptimizedLockedSlotMap, IntElement)
 {
     gby::optimized_locked_slot_map<int, 1000000> map;
-    test_SCMP<iterationCount, 3>(map, []() { return rand();}, false);
+    test_SPMC<iterationCount, 3>(map, []() { return rand();}, false);
 
     gby::optimized_locked_slot_map<int, 1000000> map2;
-    test_SCMP<iterationCount, 3>(map2, []() { return rand();}, true);
+    test_SPMC<iterationCount, 3>(map2, []() { return rand();}, true);
 }
 
 TEST(OptimizedLockedSlotMap, StringElement)
@@ -37,10 +37,10 @@ TEST(OptimizedLockedSlotMap, StringElement)
     std::generate_n(strInput.begin(), strCount, genStr);
 
     gby::optimized_locked_slot_map<std::string, 1000000> map;
-    test_SCMP<strCount, 3>(map, [&strInput]() { return strInput[rand()%strCount];}, false);
+    test_SPMC<strCount, 3>(map, [&strInput]() { return strInput[rand()%strCount];}, false);
 
     gby::optimized_locked_slot_map<std::string, 1000000> map2;
-    test_SCMP<strCount, 3>(map2, [&strInput]() { return strInput[rand()%strCount];}, true);
+    test_SPMC<strCount, 3>(map2, [&strInput]() { return strInput[rand()%strCount];}, true);
 }
 
 TEST(OptimizedLockedSlotMap, TestObjElement)
@@ -62,10 +62,10 @@ TEST(OptimizedLockedSlotMap, TestObjElement)
     std::generate_n(testObjInput.begin(), testObjCount, genTestObj);
 
     gby::optimized_locked_slot_map<TestObj, 1000000, std::pair<int32_t, uint64_t>> map;
-    test_SCMP<testObjCount, 3>(map, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, false);
+    test_SPMC<testObjCount, 3>(map, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, false);
 
     gby::optimized_locked_slot_map<TestObj, 1000000, std::pair<int32_t, uint64_t>> map2;
-    test_SCMP<testObjCount, 3>(map2, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, true);
+    test_SPMC<testObjCount, 3>(map2, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, true);
 }
 
 /////////// MCMP ///////////
@@ -75,7 +75,7 @@ constexpr size_t MCMP_writesPerWriter {iterationCount/WriterCount};
 TEST(OptimizedLockedSlotMap, MCMPIntElement)
 {
     gby::optimized_locked_slot_map<int, 1000000> map;
-    test_MCMP<WriterCount, MCMP_writesPerWriter, 2, 3>(map, [] { return rand();});
+    test_MPMC<WriterCount, MCMP_writesPerWriter, 2, 3>(map, [] { return rand();});
 }
 
  TEST(OptimizedLockedSlotMap, MCMPStringElement)
@@ -84,7 +84,7 @@ TEST(OptimizedLockedSlotMap, MCMPIntElement)
      auto strInput = genStrInput<strCount>();
 
      gby::optimized_locked_slot_map<std::string, 1000000> map;
-     test_MCMP<WriterCount, MCMP_writesPerWriter, 1, 5>(map, [&strInput] { return strInput[rand()%strCount];});
+     test_MPMC<WriterCount, MCMP_writesPerWriter, 1, 5>(map, [&strInput] { return strInput[rand()%strCount];});
  }
 
  TEST(OptimizedLockedSlotMap, MCMPTestObjElement)
@@ -93,5 +93,5 @@ TEST(OptimizedLockedSlotMap, MCMPIntElement)
      auto testObjInput = genTestObj<testObjCount>();
 
      gby::optimized_locked_slot_map<TestObj, 1000000, std::pair<int32_t, uint64_t>> map;
-     test_MCMP<WriterCount, MCMP_writesPerWriter, 0, 3>(map, [&testObjInput] { return testObjInput[rand()%testObjCount];});
+     test_MPMC<WriterCount, MCMP_writesPerWriter, 0, 3>(map, [&testObjInput] { return testObjInput[rand()%testObjCount];});
  }

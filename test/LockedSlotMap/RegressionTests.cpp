@@ -19,11 +19,11 @@ char alphanum[] = "0123456789"
  {
      gby::locked_slot_map<int> map;
      map.reserve(iterationCount);
-     test_SCMP<iterationCount, 3>(map, []() { return rand();}, false);
+     test_SPMC<iterationCount, 3>(map, []() { return rand();}, false);
 
      gby::locked_slot_map<int> map2;
      map2.reserve(iterationCount);
-     test_SCMP<iterationCount, 3>(map2, []() { return rand();}, true);
+     test_SPMC<iterationCount, 3>(map2, []() { return rand();}, true);
  }
 
  TEST(LockedSlotMap, StringElement)
@@ -45,11 +45,11 @@ char alphanum[] = "0123456789"
 
      gby::locked_slot_map<std::string> map;
      map.reserve(iterationCount);
-     test_SCMP<strCount, 3>(map, [&strInput]() { return strInput[rand()%strCount];}, false);
+     test_SPMC<strCount, 3>(map, [&strInput]() { return strInput[rand()%strCount];}, false);
 
      gby::locked_slot_map<std::string> map2;
      map2.reserve(iterationCount);
-     test_SCMP<strCount, 3>(map2, [&strInput]() { return strInput[rand()%strCount];}, true);
+     test_SPMC<strCount, 3>(map2, [&strInput]() { return strInput[rand()%strCount];}, true);
  }
 
  TEST(LockedSlotMap, TestObjElement)
@@ -72,11 +72,11 @@ char alphanum[] = "0123456789"
 
      gby::locked_slot_map<TestObj, std::pair<int32_t, uint64_t>> map;
      map.reserve(iterationCount);
-     test_SCMP<testObjCount, 3>(map, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, false);
+     test_SPMC<testObjCount, 3>(map, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, false);
 
      gby::locked_slot_map<TestObj, std::pair<int32_t, uint64_t>> map2;
      map2.reserve(iterationCount);
-     test_SCMP<testObjCount, 3>(map2, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, true);
+     test_SPMC<testObjCount, 3>(map2, [&testObjInput]() { return testObjInput[rand()%testObjCount];}, true);
  }
 
 /////////// MCMP ///////////
@@ -87,7 +87,7 @@ TEST(LockedSlotMap, MCMPIntElement)
 {
     gby::locked_slot_map<int> map;
     map.reserve(iterationCount);
-    test_MCMP<WriterCount, MCMP_writesPerWriter, 2, 3>(map, [] { return rand();});
+    test_MPMC<WriterCount, MCMP_writesPerWriter, 2, 3>(map, [] { return rand();});
 }
 
  TEST(LockedSlotMap, MCMPStringElement)
@@ -97,7 +97,7 @@ TEST(LockedSlotMap, MCMPIntElement)
 
      gby::locked_slot_map<std::string> map;
      map.reserve(iterationCount);
-     test_MCMP<WriterCount, MCMP_writesPerWriter, 1, 5>(map, [&strInput] { return strInput[rand()%strCount];});
+     test_MPMC<WriterCount, MCMP_writesPerWriter, 1, 5>(map, [&strInput] { return strInput[rand()%strCount];});
  }
 
  TEST(LockedSlotMap, MCMPTestObjElement)
@@ -107,5 +107,6 @@ TEST(LockedSlotMap, MCMPIntElement)
 
      gby::locked_slot_map<TestObj, std::pair<int32_t, uint64_t>> map;
      map.reserve(iterationCount);
-     test_MCMP<WriterCount, MCMP_writesPerWriter, 0, 3>(map, [&testObjInput] { return testObjInput[rand()%testObjCount];});
+     test_MPMC<WriterCount, MCMP_writesPerWriter, 0, 3>(map, [&testObjInput] { return testObjInput[rand()%testObjCount];});
  }
+ 

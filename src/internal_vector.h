@@ -82,7 +82,7 @@ public:
             i.second.store(nullptr);
         }
 
-        reserve(FIRST_BUCKET_SIZE);
+        allocate_bucket(0);
     }
 
     ~internal_vector() noexcept
@@ -178,8 +178,9 @@ public:
     constexpr void reserve(const size_type size)
     {
         const size_t newBucketSize = highest_bit(size + FIRST_BUCKET_SIZE - 1) - highest_bit(FIRST_BUCKET_SIZE);
-        while (_usedBucketCount < newBucketSize)
-            allocate_bucket(_usedBucketCount+1);
+        size_t curBucketSize{};
+        while ((curBucketSize = _usedBucketCount.load(std::memory_order_acquire)) < newBucketSize)
+            allocate_bucket(curBucketSize + 1);
     }
 
     constexpr size_type size(std::memory_order mo_=std::memory_order_acquire) const
@@ -194,7 +195,7 @@ public:
 
     constexpr size_t bucket_count() const
     {
-        return _usedBucketCount + 1; // +1 because we are starting at 0
+        return _usedBucketCount.load(std::memory_order_acquire) + 1; // +1 because we are starting at 0
     }
 
 private:
@@ -209,10 +210,6 @@ private:
 
     constexpr value_type& at(const size_type i_)
     {
-        if (unlikely(i_ >= size()))
-        {
-            throw std::out_of_range("index " + std::to_string(i_) + " outside of size " + std::to_string(size()) + ".");
-        }
         auto [bucket, idx] = get_location(i_); 
         T*   arr           = _bucketArr[bucket].second.load(std::memory_order_acquire); 
         return arr[idx];
@@ -231,7 +228,7 @@ private:
         if (bucket_ >= BUCKET_COUNT)
             throw std::length_error("Lock-free array reached max bucket size."); 
         
-        const size_t bucketSize = pow(FIRST_BUCKET_SIZE, bucket_+1);
+        const size_t bucketSize = round(pow(FIRST_BUCKET_SIZE, bucket_+1));
         T* newMemBlock = new T[bucketSize]();
         if (!_bucketArr[bucket_].second.compare_exchange_strong(L_VALUE_NULLPTR, newMemBlock))
         {
@@ -240,7 +237,7 @@ private:
         else
         {
             _bucketArr[bucket_].first = bucketSize;
-            _usedBucketCount = bucket_;
+            _usedBucketCount.store(bucket_, std::memory_order_release);
             _capacity += bucketSize;
         }
     }
@@ -249,7 +246,7 @@ private:
 
     std::atomic<size_type> _size;
     size_type              _capacity;
-    size_t                 _usedBucketCount;
+    std::atomic<size_t>    _usedBucketCount;
 };
 
 // Iterator is modeled after a std::deque iterator. Very helpful

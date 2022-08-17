@@ -1,26 +1,31 @@
 #!/bin/bash
 
-# get submodules
-if [ !"$(ls SG14)" ]
+if [ $# != 2 ] || [[ ! $1 =~ ^("install"|"build")$ ]] || [[ ! $2 =~ ^("Release"|"Debug")$ ]] 
 then
-    pushd SG14 > /dev/null
-    git submodule update --init --recursive
-    popd > /dev/null
-fi
-
-if [ $# -eq 0 ]
-then
-    echo "Need to specify Debug\Release build type"
+    echo "Usage ./make.sh [install|build] [Debug|Release]"
     exit
 fi
 
-# create build directory
-mkdir -p build
-mkdir -p build/$1
 
-pushd build/$1 > /dev/null
+if [ $1 = "install" ]
+then
+    # get submodules
+    if [ !"$(ls SG14)" ]
+    then
+        pushd SG14 > /dev/null
+        git submodule update --init --recursive
+        popd > /dev/null
+    fi
 
-cmake -DCMAKE_CXX_COMPILER=g++-11 -DCMAKE_BUILD_TYPE=$1 ../..
-cmake --build . -j 4
+    # create build directory
+    mkdir -p build
+    mkdir -p build/$2
 
-popd > /dev/null
+    pushd build/$2 > /dev/null
+    cmake -DCMAKE_CXX_COMPILER=g++-11 -DCMAKE_BUILD_TYPE=$2 ../..
+    popd > /dev/null
+else
+    pushd build/$2 > /dev/null
+    cmake --build . -j 4
+    popd > /dev/null
+fi

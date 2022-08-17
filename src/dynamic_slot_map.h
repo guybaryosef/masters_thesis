@@ -202,7 +202,10 @@ public:
     constexpr std::optional<std::reference_wrapper<value_type>> find(const key_type& key) 
     {
         if (auto slot = get_slot(key))
-            return _data[get_index<slot_type>(*slot)];
+        {
+            auto idx = get_index<slot_type>(*slot);
+            return _data[idx];
+        }
         else
             return {};
     }
@@ -272,7 +275,7 @@ private:
             const auto &[idx, gen] = key;
 
             const auto &slot = _slots[idx];
-            if (get_generation(slot).load(std::memory_order_relaxed) == gen)
+            if (get_generation(slot).load(std::memory_order_acquire) == gen)
                 return slot;
         }
         catch(const std::out_of_range &e) 
@@ -334,7 +337,7 @@ private:
                 // add 'erased' slot back to free slot list
                 key_index_type previous_sentinel = _sentinel_last_slot_index.load(std::memory_order_acquire);
                 set_index(_slots[previous_sentinel], slot_to_erase_idx);
-                _sentinel_last_slot_index.store(slot_to_erase_idx, std::memory_order_release);                    _sentinel_last_slot_index.store(slot_to_erase_idx, std::memory_order_release);
+                _sentinel_last_slot_index.store(slot_to_erase_idx, std::memory_order_release);
             }
         }
         while (!_erase_array.clearIfSizeEquals(erase_idx));
