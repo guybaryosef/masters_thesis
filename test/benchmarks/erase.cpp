@@ -331,3 +331,225 @@ static void erase_string_1000_dynamicSlotMap_insertAndErase(benchmark::State& st
     }
 }
 BENCHMARK(erase_string_1000_dynamicSlotMap_insertAndErase);
+
+
+static void erase_int64_10000_vector(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        std::vector<int64_t> vec;
+        vec.reserve(10000);
+        pushBackArr<std::vector<int64_t>, 10000, false>(vec);
+        benchmark::DoNotOptimize(eraseIterators(vec));
+    }
+}
+BENCHMARK(erase_int64_10000_vector);
+
+
+static void erase_int64_10000_unordered_set(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        std::unordered_set<int64_t> set;
+        set.reserve(10000);
+        insertMap<std::unordered_set<int64_t>, 10000, false>(set);
+        benchmark::DoNotOptimize(eraseIterators(set));
+    }
+}
+BENCHMARK(erase_int64_10000_unordered_set);
+
+
+static void erase_int64_10000_sg14_slotMap(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        stdext::slot_map<int64_t> sg14SlotMap;
+        sg14SlotMap.reserve(10000);
+        insertMap<stdext::slot_map<int64_t>, 10000, false>(sg14SlotMap);
+        benchmark::DoNotOptimize(eraseIterators(sg14SlotMap));
+    }
+}
+BENCHMARK(erase_int64_10000_sg14_slotMap);
+
+
+static void erase_int64_10000_lockedSlotMap_insertOnly(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        gby::locked_slot_map<int64_t> slotMap;
+        slotMap.reserve(10000);
+        benchmark::DoNotOptimize(insertSlotMap<gby::locked_slot_map<int64_t>, std::vector<gby::locked_slot_map<int64_t>::key_type>, 10000, false>(slotMap));
+    }
+}
+BENCHMARK(erase_int64_10000_lockedSlotMap_insertOnly);
+
+
+static void erase_int64_10000_lockedSlotMap_insertAndErase(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        gby::locked_slot_map<int64_t> slotMap;
+        slotMap.reserve(10000);
+        auto vec = insertSlotMap<gby::locked_slot_map<int64_t>, std::vector<gby::locked_slot_map<int64_t>::key_type>, 10000, false>(slotMap);
+        benchmark::DoNotOptimize(eraseSlotMap(slotMap, vec));
+    }
+}
+BENCHMARK(erase_int64_10000_lockedSlotMap_insertAndErase);
+
+
+static void erase_int64_10000_optimizedLockedSlotMap_insertOnly(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        gby::optimized_locked_slot_map<int64_t, 10000> optimizedSlotMap;
+        benchmark::DoNotOptimize(insertSlotMap<gby::optimized_locked_slot_map<int64_t, 10000>, std::vector<gby::optimized_locked_slot_map<int64_t, 10000>::key_type>, 10000, false>(optimizedSlotMap));
+    }
+}
+BENCHMARK(erase_int64_10000_optimizedLockedSlotMap_insertOnly);
+
+
+static void erase_int64_10000_optimizedLockedSlotMap_insertAndErase(benchmark::State& state) 
+{
+
+    std::vector<gby::optimized_locked_slot_map<int64_t, 10000>::key_type> vec;
+    for (auto _ : state)
+    {
+        gby::optimized_locked_slot_map<int64_t, 10000> optimizedSlotMap;
+        auto vec = insertSlotMap<gby::optimized_locked_slot_map<int64_t, 10000>, std::vector<gby::optimized_locked_slot_map<int64_t, 10000>::key_type>, 10000, false>(optimizedSlotMap);
+        benchmark::DoNotOptimize(eraseSlotMap(optimizedSlotMap, vec));
+    }
+}
+BENCHMARK(erase_int64_10000_optimizedLockedSlotMap_insertAndErase);
+
+
+static void erase_int64_10000_dynamicSlotMap_insertOnly(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        gby::dynamic_slot_map<int64_t> dynamicSlotMap(10000);
+        benchmark::DoNotOptimize(insertSlotMap<gby::dynamic_slot_map<int64_t>, std::vector<gby::dynamic_slot_map<int64_t>::key_type>, 10000, false>(dynamicSlotMap));
+    }
+}
+BENCHMARK(erase_int64_10000_dynamicSlotMap_insertOnly);
+
+
+static void erase_int64_10000_dynamicSlotMap_insertAndErase(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        gby::dynamic_slot_map<int64_t> dynamicSlotMap(10000);
+        auto vec = insertSlotMap<gby::dynamic_slot_map<int64_t>, std::vector<gby::dynamic_slot_map<int64_t>::key_type>, 10000, false>(dynamicSlotMap);
+        eraseSlotMap(dynamicSlotMap, vec);
+    }
+}
+BENCHMARK(erase_int64_10000_dynamicSlotMap_insertAndErase);
+
+
+static void erase_string_10000_vector_idx(benchmark::State& state) 
+{
+
+    for (auto _ : state)
+    {
+        std::vector<std::string> vec;
+        vec.reserve(10000);
+        pushBackArr<std::vector<std::string>, 10000, true>(vec);
+        benchmark::DoNotOptimize(eraseIterators(vec));
+    }
+}
+BENCHMARK(erase_string_10000_vector_idx);
+
+
+static void erase_string_10000_unordered_set(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        std::unordered_set<std::string> set;
+        set.reserve(10000);
+        insertMap<std::unordered_set<std::string>, 10000, true>(set);
+        benchmark::DoNotOptimize(eraseIterators(set));
+    }
+}
+BENCHMARK(erase_string_10000_unordered_set);
+
+
+static void erase_string_10000_sg14_slotMap(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        stdext::slot_map<std::string> sg14SlotMap;
+        sg14SlotMap.reserve(10000);
+        insertMap<stdext::slot_map<std::string>, 10000, true>(sg14SlotMap);
+        benchmark::DoNotOptimize(eraseIterators(sg14SlotMap));
+    }
+}
+BENCHMARK(erase_string_10000_sg14_slotMap);
+
+static void erase_string_10000_lockedSlotMap_onlyInsert(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        gby::locked_slot_map<std::string> slotMap;
+        slotMap.reserve(10000);
+        benchmark::DoNotOptimize(insertSlotMap<gby::locked_slot_map<std::string>, std::vector<gby::locked_slot_map<std::string>::key_type>, 10000, true>(slotMap));
+    }
+}
+BENCHMARK(erase_string_10000_lockedSlotMap_onlyInsert);
+
+
+static void erase_string_10000_lockedSlotMap_insertAndErase(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        gby::locked_slot_map<std::string> slotMap;
+        slotMap.reserve(10000);
+        auto vec = insertSlotMap<gby::locked_slot_map<std::string>, std::vector<gby::locked_slot_map<std::string>::key_type>, 10000, true>(slotMap);
+        benchmark::DoNotOptimize(eraseSlotMap(slotMap, vec));
+    }
+}
+BENCHMARK(erase_string_10000_lockedSlotMap_insertAndErase);
+
+
+static void erase_string_10000_optimizedLockedSlotMap_insertOnly(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        gby::optimized_locked_slot_map<std::string, 10000> optimizedSlotMap;
+        benchmark::DoNotOptimize(insertSlotMap<gby::optimized_locked_slot_map<std::string, 10000>, std::vector<gby::optimized_locked_slot_map<std::string, 10000>::key_type>, 10000, true>(optimizedSlotMap));
+    }
+}
+BENCHMARK(erase_string_10000_optimizedLockedSlotMap_insertOnly);
+
+
+static void erase_string_10000_optimizedLockedSlotMap_insertAndErase(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        gby::optimized_locked_slot_map<std::string, 10000> optimizedSlotMap;
+        auto vec = insertSlotMap<gby::optimized_locked_slot_map<std::string, 10000>, std::vector<gby::optimized_locked_slot_map<std::string, 10000>::key_type>, 10000, true>(optimizedSlotMap);
+        eraseSlotMap(optimizedSlotMap, vec);
+    }
+}
+BENCHMARK(erase_string_10000_optimizedLockedSlotMap_insertAndErase);
+
+
+static void erase_string_10000_dynamicSlotMap_insertOnly(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        gby::dynamic_slot_map<std::string> dynamicSlotMap(10000);
+        benchmark::DoNotOptimize(insertSlotMap<gby::dynamic_slot_map<std::string>, std::vector<gby::dynamic_slot_map<std::string>::key_type>, 10000, true>(dynamicSlotMap));
+    }
+}
+BENCHMARK(erase_string_10000_dynamicSlotMap_insertOnly);
+
+
+static void erase_string_10000_dynamicSlotMap_insertAndErase(benchmark::State& state) 
+{
+    for (auto _ : state)
+    {
+        gby::dynamic_slot_map<std::string> dynamicSlotMap(10000);
+        auto vec = insertSlotMap<gby::dynamic_slot_map<std::string>, std::vector<gby::dynamic_slot_map<std::string>::key_type>, 10000, true>(dynamicSlotMap);
+        eraseSlotMap(dynamicSlotMap, vec);
+    }
+}
+BENCHMARK(erase_string_10000_dynamicSlotMap_insertAndErase);
