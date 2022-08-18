@@ -1,3 +1,12 @@
+/*
+ * optimized_locked_slot_map.h - A thread-safe constant sized implementation 
+ * of a slot map. It's called optimized relative to the locked_slot_map 
+ * implementation which is a wrapper around a non-thread safe slot map.
+ * 
+ * This optimized implementation utilizes elements of lock-free programming
+ * to avoid blocking in most scenarios.
+ * 
+ */
 
 #pragma once
 
@@ -342,8 +351,7 @@ public:
     std::atomic<key_index_type> _next_available_slot_index;
     std::atomic<key_index_type> _sentinel_last_slot_index;
     
-    // stack used to store elements to be deleted. This is only used if trying
-    // to delete while iterating- otherwise the elemnt gets deleted on the spot
+    // stack used to store elements to be deleted.
     std::vector<slot_index_type> _erase_array = std::vector<slot_index_type>(Size);
     std::atomic<size_t>  _erase_array_length;
 

@@ -1,5 +1,9 @@
 /*
- * slot_map.h - A lock-free impelemntation of a slot_map.
+ * dynamic_slot_map.h - A thread-safe dynamically resizable implementation of a slot map.
+ * 
+ * This optimized implementation utilizes elements of lock-free programming
+ * to avoid blocking in most scenarios.
+ * 
  */
 
 #pragma once
@@ -354,8 +358,7 @@ private:
 
     float _reserve_factor;
 
-    // stack used to store elements to be deleted. This is only used if trying
-    // to delete while iterating- otherwise the elemnt gets deleted on the spot)
+    // stack used to store elements to be deleted.
     gby::internal_vector<slot_index_type> _erase_array;
 
     // enforces that we can't iterate & delete at the same time

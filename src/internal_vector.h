@@ -7,6 +7,8 @@
  * 
  * https://www.stroustrup.com/lock-free-vector.pdf
  *
+ * In some places it diverges from the implementation described
+ * in the paper, while other times remains faithful. 
  */
 
 #pragma once
