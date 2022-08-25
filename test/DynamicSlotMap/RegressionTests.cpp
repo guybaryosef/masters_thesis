@@ -103,5 +103,5 @@ TEST(DynamicSlotMap, MCMPTestObjElement)
 
     gby::dynamic_slot_map<TestObj, std::pair<int32_t, uint64_t>> map;
     map.reserve(iterationCount);
-    test_MPMC<WriterCount, MCMP_writesPerWriter, 0, 3>(map, [&testObjInput] { return testObjInput[rand()%testObjCount];});
+    test_MPMC<WriterCount, MCMP_writesPerWriter, 1, 3>(map, [&testObjInput] { return testObjInput[rand()%testObjCount];});
 }

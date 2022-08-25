@@ -200,6 +200,25 @@ public:
         return _usedBucketCount.load(std::memory_order_acquire) + 1; // +1 because we are starting at 0
     }
 
+    template<typename Fnc>
+    constexpr void iterate_over(Fnc fnc_)
+    {
+        int64_t counter = 0;
+        size_t curBucketIdx = 0;
+        while (curBucketIdx++ < _usedBucketCount.load(std::memory_order_acquire))
+        {
+            auto& curBucket = _bucketArr[curBucketIdx];
+            auto bucketSize = curBucket.first;
+            auto arrPtr     = curBucket.second.load(std::memory_order_acquire);
+
+            auto loopIncrements = std::min(bucketSize, _size.load(std::memory_order_acquire) - counter);
+            for (int i = 0; i < loopIncrements; ++i)
+                fnc_(arrPtr[i]);
+
+            counter += loopIncrements;
+        }
+    }
+
 private:
     constexpr std::pair<size_t, size_type> get_location (const size_type i_) const
     {

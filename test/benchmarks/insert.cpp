@@ -265,7 +265,7 @@ static void insert_int64_10000_optimizedLockedSlotMap(benchmark::State& state)
         benchmark::DoNotOptimize(insertMap<gby::optimized_locked_slot_map<int64_t, 10000>, 10000, false>(optimizedSlotMap));
     }
 }
-BENCHMARK(insert_int64_1000_optimizedLockedSlotMap);
+BENCHMARK(insert_int64_10000_optimizedLockedSlotMap);
 
 
 static void insert_int64_10000_dynamicSlotMap(benchmark::State& state) 

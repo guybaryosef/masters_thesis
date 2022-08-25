@@ -116,27 +116,34 @@ template <typename T, typename U, typename Z>
 std::pair<std::chrono::nanoseconds, size_t> eraserFnc (T &keys, std::atomic<size_t>& keySize, U &map, std::atomic<bool> &readFlag)
 {
     long count {};
+    std::chrono::nanoseconds sleepLen {1000};
 
     std::uniform_int_distribution<size_t> idxDistribution(1, 9999999);
     std::mt19937 random_number_engine; // pseudorandom number generator
     auto idxGenerator = std::bind(idxDistribution, random_number_engine);
 
     auto timeStart = std::chrono::high_resolution_clock::now();
+
+    int sleepCount = 0;
     while(readFlag)
     {
-        sleep(0.01);
+        std::this_thread::sleep_for(sleepLen);
+        sleepCount++;
         auto sz = keySize.load();
         if (sz > 0)
         {
             size_t key_idx {idxGenerator()%sz};
             keySize.fetch_sub(1);
             map.erase(keys[key_idx]);
+            count++;
         }
     }
     auto timeEnd = std::chrono::high_resolution_clock::now();
     
-    std::chrono::nanoseconds timeSlept {10ULL * 1000 * 1000 * count};
-    return {std::chrono::duration_cast<std::chrono::nanoseconds>(timeEnd-timeStart) - timeSlept, 0};
+    std::chrono::nanoseconds timeSlept {sleepCount * sleepLen};
+    std::chrono::nanoseconds totalTime {std::chrono::duration_cast<std::chrono::nanoseconds>(timeEnd-timeStart)};
+    auto overallTime = totalTime - timeSlept;
+    return {overallTime, count};
 }
 
 template<typename T, typename U>
@@ -152,30 +159,32 @@ std::tuple<std::chrono::nanoseconds, size_t, size_t> readerFnc(const T &keys, st
     auto timeStart = std::chrono::high_resolution_clock::now();
     while (readFlag)
     {
-        if (keySize != 0)
+        size_t idx;
+        try
         {
-            size_t idx;
+            size_t keyMax = keySize.load(std::memory_order_acquire);
+            while (keyMax == 0)
+                keyMax = keySize.load(std::memory_order_acquire);
+
+            size_t randomIdx = idxGenerator();
+            idx = randomIdx % keyMax;
+            auto key = keys[idx];
             try
             {
-                idx = idxGenerator() % keySize.load();
-                auto key = keys[idx];
-                try
-                {
-                    const auto& var = map.find(key);
-                    __asm("");
-                    readCount++;                    
-                }
-                catch([[maybe_unused]] std::exception& e)
-                {
-                    std::cerr << "nested exception: " << e.what() << std::endl;
-                    errorCount++;
-                }
+                const auto& var = map.find(key);
+                __asm("");
+                readCount++;
             }
-            catch([[maybe_unused]] std::exception& e) 
+            catch([[maybe_unused]] std::exception& e)
             {
-                std::cerr << "exception: " << e.what() << std::endl;
+                std::cerr << "nested exception: " << e.what() << std::endl;
                 errorCount++;
             }
+        }
+        catch([[maybe_unused]] std::exception& e)
+        {
+            std::cerr << "exception: " << e.what() << std::endl;
+            errorCount++;
         }
     }
     auto timeEnd = std::chrono::high_resolution_clock::now();
@@ -277,11 +286,11 @@ void test_MPMC(T& map, U genKeyFunctor)
     std::atomic<bool> readFlag{true};
 
     std::vector<std::future<std::pair<std::chrono::nanoseconds, size_t>>> erasers{};
-    auto eraseCount = std::min(EraserCount, WriterCount);
-    if (eraseCount > 0)
+    auto erasersCount = std::min(EraserCount, WriterCount);
+    if (erasersCount > 0)
     {
-        erasers.reserve(eraseCount);
-        for (size_t i=0; i < eraseCount; ++i)
+        erasers.reserve(erasersCount);
+        for (size_t i=0; i < erasersCount; ++i)
             erasers.emplace_back(std::async(std::launch::async,
                                             eraserFnc<std::vector<typename T::key_type>, T, U>,
                                             std::ref(vecOfKeys[i]), std::ref(vecOfkeysLen[i]), std::ref(map), std::ref(readFlag)) );
@@ -298,9 +307,16 @@ void test_MPMC(T& map, U genKeyFunctor)
 
     }
 
-    std::chrono::nanoseconds totalWriteInNanos {};
     size_t totalWrites {WriterCount*WriteCountPerWriter};
 
+    std::chrono::nanoseconds totalWriteInNanos {};
+    for (auto& writer : writers)
+    {
+        auto [writingTimeInNanos, erasedCount] = writer.get();
+
+        EXPECT_EQ(0, erasedCount);
+        totalWriteInNanos += writingTimeInNanos;
+    }
     readFlag = false;
 
     std::chrono::nanoseconds totalReaderTimeInNanos {};
@@ -319,6 +335,7 @@ void test_MPMC(T& map, U genKeyFunctor)
     for (auto& eraser : erasers)
     {
         auto [eraserTimeInNanos, eraseCount] = eraser.get();
+        EXPECT_GT(eraserTimeInNanos, static_cast<std::chrono::nanoseconds>(0));
         totalEraserTimeInNanos += eraserTimeInNanos;
         totalErases += eraseCount;
     }
@@ -331,11 +348,11 @@ void test_MPMC(T& map, U genKeyFunctor)
                                      << " averaging "<< (totalWrites == 0 ? 0 : totalWriteInNanos.count()/totalWrites)
                                      << " nanos per write."      << "\n"
               << "Erasers:"                                                       << "\n"
-              << "     - concurrent erasers count: " << WriterCount               << "\n"
+              << "     - concurrent erasers count: " << erasersCount              << "\n"
               << "     - total elements erased: "    << totalErases               << "\n"
               << "     - time (in nanoseconds): "   << totalEraserTimeInNanos.count()
                                      << " averaging "<< (totalErases == 0 ? 0 : totalEraserTimeInNanos.count()/totalErases)
-                                     << " nanos per write."      << "\n"
+                                     << " nanos per erase."      << "\n"
               << "Readers:"                                                       << "\n"
               << "     - concurrent readers count: " << ReaderCount               << "\n"
               << "     - Total elements read: "      << totalReads                << "\n"

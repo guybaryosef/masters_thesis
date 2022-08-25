@@ -150,16 +150,7 @@ public:
     {
         {
             std::shared_lock sl {_eraseMut};
-
-            size_t i {};
-            size_t sz {};
-            do 
-            {
-                sz = size();
-                for ( ; i < sz; ++i)
-                    pred(_data[i]);
-            } 
-            while (sz != size());
+            _data.iterate_over(pred);
         }
         
         drainEraseQueue();
